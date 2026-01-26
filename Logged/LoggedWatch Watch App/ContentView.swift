@@ -1,24 +1,42 @@
-//
-//  ContentView.swift
-//  LoggedWatch Watch App
-//
-//  Created by Dustin Schaaf on 1/26/26.
-//
-
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var sessionManager = WatchSessionManager.shared
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        Group {
+            if sessionManager.isAuthenticated {
+                TabView {
+                    SummaryView()
+                    QuickLogView()
+                    WorkoutLogView()
+                }
+                .tabViewStyle(.page)
+            } else {
+                AuthRequiredView()
+            }
         }
-        .padding()
+        .onAppear {
+            sessionManager.requestTokens()
+        }
     }
 }
 
-#Preview {
-    ContentView()
+struct AuthRequiredView: View {
+    @StateObject private var sessionManager = WatchSessionManager.shared
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "iphone")
+            Text("Open Logged on iPhone to sign in")
+                .font(.footnote)
+                .multilineTextAlignment(.center)
+            if let error = sessionManager.lastError {
+                Text(error)
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+            }
+        }
+        .padding()
+    }
 }

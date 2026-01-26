@@ -12,6 +12,11 @@ struct LoggedApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onAppear {
+                    #if canImport(WatchConnectivity)
+                    WatchConnectivityService.shared.activate()
+                    #endif
+                }
         }
     }
 }
