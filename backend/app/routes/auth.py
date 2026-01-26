@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.base import get_db
+from app.models.base import get_auth_db
 from app.schemas.auth import (
     MagicLinkRequest,
     MagicLinkVerify,
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 @router.post("/magic-link", status_code=status.HTTP_200_OK)
 async def request_magic_link(
     request: MagicLinkRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_auth_db),
 ):
     """
     Request a magic link for email authentication.
@@ -39,7 +39,7 @@ async def request_magic_link(
 @router.post("/verify", response_model=TokenResponse)
 async def verify_magic_link(
     request: MagicLinkVerify,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_auth_db),
 ):
     """
     Verify a magic link token and return authentication tokens.
@@ -59,7 +59,7 @@ async def verify_magic_link(
 @router.post("/apple", response_model=TokenResponse)
 async def sign_in_with_apple(
     request: AppleSignInRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_auth_db),
 ):
     """
     Sign in with Apple.
@@ -82,7 +82,7 @@ async def sign_in_with_apple(
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(
     request: RefreshTokenRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_auth_db),
 ):
     """
     Refresh an access token using a refresh token.

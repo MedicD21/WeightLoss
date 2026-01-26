@@ -104,6 +104,7 @@ async def chat_with_assistant(
         user_message=request.message,
         conversation_history=conversation_history,
         user_context=user_context,
+        conversation_id=request.conversation_id,
     )
 
     # Save user message
@@ -161,25 +162,25 @@ async def _execute_tool(
     """Execute a tool call and return the result."""
     try:
         if tool_call.name == "add_meal":
-            return await _add_meal(db, user, tool_call.arguments)
+            return await _add_meal(db, user, tool_call.arguments, tool_call.id)
 
         elif tool_call.name == "add_workout":
-            return await _add_workout(db, user, tool_call.arguments)
+            return await _add_workout(db, user, tool_call.arguments, tool_call.id)
 
         elif tool_call.name == "add_water":
-            return await _add_water(db, user, tool_call.arguments)
+            return await _add_water(db, user, tool_call.arguments, tool_call.id)
 
         elif tool_call.name == "add_weight":
-            return await _add_weight(db, user, tool_call.arguments)
+            return await _add_weight(db, user, tool_call.arguments, tool_call.id)
 
         elif tool_call.name == "set_goal":
-            return await _set_goal(db, user, tool_call.arguments)
+            return await _set_goal(db, user, tool_call.arguments, tool_call.id)
 
         elif tool_call.name == "search_food":
-            return await _search_food(db, user, tool_call.arguments)
+            return await _search_food(db, user, tool_call.arguments, tool_call.id)
 
         elif tool_call.name == "get_daily_summary":
-            return await _get_daily_summary(db, user, tool_call.arguments)
+            return await _get_daily_summary(db, user, tool_call.arguments, tool_call.id)
 
         else:
             return ToolResult(
@@ -198,7 +199,12 @@ async def _execute_tool(
         )
 
 
-async def _add_meal(db: AsyncSession, user: UserProfile, args: dict) -> ToolResult:
+async def _add_meal(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
     """Add a meal via tool call."""
     timestamp = datetime.fromisoformat(args["timestamp"]) if args.get("timestamp") else datetime.utcnow()
     meal_type = MealType(args.get("meal_type", "other"))
@@ -227,7 +233,7 @@ async def _add_meal(db: AsyncSession, user: UserProfile, args: dict) -> ToolResu
     await db.flush()
 
     return ToolResult(
-        tool_call_id="add_meal",
+        tool_call_id=tool_call_id,
         result={
             "meal_id": str(meal.id),
             "name": meal.name,
@@ -238,7 +244,12 @@ async def _add_meal(db: AsyncSession, user: UserProfile, args: dict) -> ToolResu
     )
 
 
-async def _add_workout(db: AsyncSession, user: UserProfile, args: dict) -> ToolResult:
+async def _add_workout(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
     """Add a workout via tool call."""
     timestamp = datetime.fromisoformat(args["timestamp"]) if args.get("timestamp") else datetime.utcnow()
     workout_type = WorkoutType(args.get("workout_type", "other"))
@@ -257,7 +268,7 @@ async def _add_workout(db: AsyncSession, user: UserProfile, args: dict) -> ToolR
     await db.flush()
 
     return ToolResult(
-        tool_call_id="add_workout",
+        tool_call_id=tool_call_id,
         result={
             "workout_id": str(log.id),
             "name": log.name,
@@ -267,7 +278,12 @@ async def _add_workout(db: AsyncSession, user: UserProfile, args: dict) -> ToolR
     )
 
 
-async def _add_water(db: AsyncSession, user: UserProfile, args: dict) -> ToolResult:
+async def _add_water(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
     """Add water intake via tool call."""
     timestamp = datetime.fromisoformat(args["timestamp"]) if args.get("timestamp") else datetime.utcnow()
 
@@ -282,7 +298,7 @@ async def _add_water(db: AsyncSession, user: UserProfile, args: dict) -> ToolRes
     await db.flush()
 
     return ToolResult(
-        tool_call_id="add_water",
+        tool_call_id=tool_call_id,
         result={
             "entry_id": str(entry.id),
             "amount_ml": entry.amount_ml,
@@ -291,7 +307,12 @@ async def _add_water(db: AsyncSession, user: UserProfile, args: dict) -> ToolRes
     )
 
 
-async def _add_weight(db: AsyncSession, user: UserProfile, args: dict) -> ToolResult:
+async def _add_weight(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
     """Add weight entry via tool call."""
     timestamp = datetime.fromisoformat(args["timestamp"]) if args.get("timestamp") else datetime.utcnow()
 
@@ -312,7 +333,7 @@ async def _add_weight(db: AsyncSession, user: UserProfile, args: dict) -> ToolRe
     await auth_service.sync_user_profile(user)
 
     return ToolResult(
-        tool_call_id="add_weight",
+        tool_call_id=tool_call_id,
         result={
             "entry_id": str(entry.id),
             "weight_kg": entry.weight_kg,
@@ -321,7 +342,12 @@ async def _add_weight(db: AsyncSession, user: UserProfile, args: dict) -> ToolRe
     )
 
 
-async def _set_goal(db: AsyncSession, user: UserProfile, args: dict) -> ToolResult:
+async def _set_goal(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
     """Update user goals via tool call."""
     from app.models.user import GoalType, ActivityLevel
     from app.services.macro_calculator import MacroCalculator
@@ -373,7 +399,7 @@ async def _set_goal(db: AsyncSession, user: UserProfile, args: dict) -> ToolResu
     await auth_service.sync_user_profile(user)
 
     return ToolResult(
-        tool_call_id="set_goal",
+        tool_call_id=tool_call_id,
         result={
             "goal_type": user.goal_type.value,
             "activity_level": user.activity_level.value,
@@ -382,13 +408,18 @@ async def _set_goal(db: AsyncSession, user: UserProfile, args: dict) -> ToolResu
     )
 
 
-async def _search_food(db: AsyncSession, user: UserProfile, args: dict) -> ToolResult:
+async def _search_food(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
     """Search food via tool call."""
     if args.get("barcode"):
         product = await off_client.get_product_by_barcode(args["barcode"])
         if product:
             return ToolResult(
-                tool_call_id="search_food",
+                tool_call_id=tool_call_id,
                 result={
                     "name": product.name,
                     "brand": product.brand,
@@ -400,7 +431,7 @@ async def _search_food(db: AsyncSession, user: UserProfile, args: dict) -> ToolR
                 success=True,
             )
         return ToolResult(
-            tool_call_id="search_food",
+            tool_call_id=tool_call_id,
             result=None,
             success=False,
             error="Product not found",
@@ -409,7 +440,7 @@ async def _search_food(db: AsyncSession, user: UserProfile, args: dict) -> ToolR
     if args.get("query"):
         products = await off_client.search_products(args["query"], page_size=5)
         return ToolResult(
-            tool_call_id="search_food",
+            tool_call_id=tool_call_id,
             result=[
                 {
                     "name": p.name,
@@ -422,14 +453,19 @@ async def _search_food(db: AsyncSession, user: UserProfile, args: dict) -> ToolR
         )
 
     return ToolResult(
-        tool_call_id="search_food",
+        tool_call_id=tool_call_id,
         result=None,
         success=False,
         error="No query or barcode provided",
     )
 
 
-async def _get_daily_summary(db: AsyncSession, user: UserProfile, args: dict) -> ToolResult:
+async def _get_daily_summary(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
     """Get daily summary via tool call."""
     from app.models.nutrition import Meal
 
@@ -453,7 +489,7 @@ async def _get_daily_summary(db: AsyncSession, user: UserProfile, args: dict) ->
     water = sum(w.amount_ml for w in water_result.scalars().all())
 
     return ToolResult(
-        tool_call_id="get_daily_summary",
+        tool_call_id=tool_call_id,
         result={
             "date": date_str,
             "calories": sum(m.total_calories for m in meals),

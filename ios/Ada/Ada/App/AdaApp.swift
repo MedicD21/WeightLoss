@@ -79,6 +79,10 @@ class AppState: ObservableObject {
 
         // Check if user has completed onboarding
         isOnboarded = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+
+        #if canImport(WatchConnectivity)
+        WatchConnectivityService.shared.activate()
+        #endif
     }
 
     func signIn(token: String, refreshToken: String) {

@@ -7,6 +7,7 @@ from sqlalchemy import MetaData, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.asyncio import AsyncAttrs, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.engine.url import make_url
 
 from app.config import get_settings
 
@@ -43,20 +44,41 @@ class Base(AsyncAttrs, DeclarativeBase):
 
 
 # Database engine and session
+def _build_engine_params(database_url: str) -> tuple[str, dict]:
+    """Normalize asyncpg URL options and return (url, connect_args)."""
+    url = make_url(database_url)
+    query = dict(url.query)
+    connect_args: dict = {}
+
+    sslmode = query.pop("sslmode", None)
+    if sslmode and sslmode.lower() != "disable":
+        connect_args["ssl"] = True
+
+    # libpq-only options; asyncpg does not accept these as kwargs
+    query.pop("channel_binding", None)
+
+    return url.set(query=query).render_as_string(hide_password=False), connect_args
+
+
+database_url, database_connect_args = _build_engine_params(settings.database_url)
 engine = create_async_engine(
-    settings.database_url,
+    database_url,
     echo=settings.database_echo,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
+    connect_args=database_connect_args,
 )
 
+auth_db_url = settings.auth_database_url or settings.database_url
+auth_url, auth_connect_args = _build_engine_params(auth_db_url)
 auth_engine = create_async_engine(
-    settings.auth_database_url or settings.database_url,
+    auth_url,
     echo=settings.database_echo,
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10,
+    connect_args=auth_connect_args,
 )
 
 AsyncSessionLocal = async_sessionmaker(

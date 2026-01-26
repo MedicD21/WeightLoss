@@ -32,11 +32,14 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
     logger.info("Starting Logged Fitness Tracker API...")
-    await init_db()
-    logger.info("Database initialized")
-    if settings.auth_database_url and settings.auth_database_url != settings.database_url:
-        await init_auth_db()
-        logger.info("Auth database initialized")
+    if settings.debug or settings.db_auto_init:
+        await init_db()
+        logger.info("Database initialized")
+        if settings.auth_database_url and settings.auth_database_url != settings.database_url:
+            await init_auth_db()
+            logger.info("Auth database initialized")
+    else:
+        logger.info("Skipping automatic DB init (use Alembic migrations)")
     yield
     # Shutdown
     logger.info("Shutting down Logged Fitness Tracker API...")

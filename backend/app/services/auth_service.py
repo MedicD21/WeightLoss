@@ -6,20 +6,16 @@ from typing import Optional
 from uuid import UUID
 
 import jwt
-from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models.base import AsyncAuthSessionLocal
+from app.models.base import AsyncAuthSessionLocal, AsyncSessionLocal
 from app.models.user import UserProfile
 from app.schemas.auth import TokenResponse, TokenPayload
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
-
-# Password hashing (for future use if needed)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # In-memory magic link storage (use Redis in production)
 # Format: {token: {email: str, expires: datetime}}
@@ -249,6 +245,7 @@ class AuthService:
 
         if user:
             await self.sync_user_profile(user)
+            await self.sync_user_profile_to_main(user)
             return user
 
         # Create new user
@@ -259,6 +256,7 @@ class AuthService:
         db.add(user)
         await db.flush()
         await self.sync_user_profile(user)
+        await self.sync_user_profile_to_main(user)
 
         return user
 
@@ -289,6 +287,7 @@ class AuthService:
 
         if user:
             await self.sync_user_profile(user)
+            await self.sync_user_profile_to_main(user)
             return user
 
         # Try to find by email if provided
@@ -303,6 +302,7 @@ class AuthService:
                 user.apple_user_id = apple_user_id
                 await db.flush()
                 await self.sync_user_profile(user)
+                await self.sync_user_profile_to_main(user)
                 return user
 
         # Create new user
@@ -315,6 +315,7 @@ class AuthService:
         db.add(user)
         await db.flush()
         await self.sync_user_profile(user)
+        await self.sync_user_profile_to_main(user)
 
         return user
 
@@ -337,6 +338,26 @@ class AuthService:
                 await auth_session.commit()
         except Exception as e:
             logger.warning(f"Failed to sync user profile to auth DB: {e}")
+
+    async def sync_user_profile_to_main(self, user: UserProfile) -> None:
+        """Mirror user profile data to the main database if auth DB is separate."""
+        if not settings.auth_database_url or settings.auth_database_url == settings.database_url:
+            return
+
+        try:
+            async with AsyncSessionLocal() as main_session:
+                existing = await main_session.get(UserProfile, user.id)
+                data = user.to_dict()
+
+                if existing:
+                    for key, value in data.items():
+                        setattr(existing, key, value)
+                else:
+                    main_session.add(UserProfile(**data))
+
+                await main_session.commit()
+        except Exception as e:
+            logger.warning(f"Failed to sync user profile to main DB: {e}")
 
 
 # Singleton instance

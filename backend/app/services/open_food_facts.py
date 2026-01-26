@@ -146,11 +146,11 @@ class OpenFoodFactsClient:
         nutriments = data.get("nutriments", {})
 
         # Extract per 100g values
-        calories = self._get_nutriment(nutriments, "energy-kcal_100g", "energy_100g")
-        if calories and "energy_100g" in str(calories):
+        calories = self._get_nutriment(nutriments, "energy-kcal_100g")
+        if calories is None:
             # Convert from kJ to kcal if needed
-            energy_kj = nutriments.get("energy_100g")
-            if energy_kj:
+            energy_kj = self._get_nutriment(nutriments, "energy_100g")
+            if energy_kj is not None:
                 calories = energy_kj / 4.184
 
         protein = self._get_nutriment(nutriments, "proteins_100g")

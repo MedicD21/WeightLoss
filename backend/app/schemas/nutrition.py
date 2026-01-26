@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from app.models.nutrition import FoodSource, MealType
 
@@ -47,8 +47,7 @@ class FoodItemResponse(FoodItemBase):
     portion_description: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MealBase(BaseModel):
@@ -88,8 +87,7 @@ class MealResponse(MealBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MealSummary(BaseModel):
@@ -138,8 +136,7 @@ class SavedFoodResponse(BaseModel):
     last_used_at: Optional[datetime] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OpenFoodFactsProduct(BaseModel):

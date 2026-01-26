@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional, List, Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from app.models.chat import MessageRole
 
@@ -50,8 +50,7 @@ class ChatMessageResponse(ChatMessageBase):
     model_used: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, protected_namespaces=())
 
 
 class ChatRequest(BaseModel):
@@ -74,6 +73,8 @@ class ChatResponse(BaseModel):
     # If tools modified data
     created_entries: Optional[List[dict]] = None
     confirmation_required: Optional[dict] = None
+
+    model_config = ConfigDict(protected_namespaces=())
 
 
 class PendingAction(BaseModel):
@@ -110,6 +111,8 @@ class VisionAnalyzeResponse(BaseModel):
     description: str
     disclaimer: str = "These are AI estimates. Actual values may vary. Please review and adjust."
     model_used: str
+
+    model_config = ConfigDict(protected_namespaces=())
 
 
 class ConversationHistory(BaseModel):

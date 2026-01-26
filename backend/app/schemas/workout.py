@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from app.models.workout import WorkoutType, LogSource, MuscleGroup
 
@@ -34,8 +34,7 @@ class WorkoutExerciseResponse(WorkoutExerciseBase):
     order_index: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WorkoutPlanBase(BaseModel):
@@ -74,8 +73,7 @@ class WorkoutPlanResponse(WorkoutPlanBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WorkoutPlanSummary(BaseModel):
@@ -116,8 +114,7 @@ class WorkoutSetLogResponse(WorkoutSetLogBase):
     order_index: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WorkoutLogBase(BaseModel):
@@ -166,8 +163,7 @@ class WorkoutLogResponse(WorkoutLogBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WorkoutLogSummary(BaseModel):

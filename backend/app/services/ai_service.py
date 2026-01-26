@@ -298,6 +298,7 @@ class AIService:
         user_message: str,
         conversation_history: Optional[list[dict]] = None,
         user_context: Optional[dict] = None,
+        conversation_id: Optional[str] = None,
     ) -> ChatResponse:
         """
         Process a chat message and return response with any tool calls.
@@ -310,11 +311,12 @@ class AIService:
         Returns:
             ChatResponse with message and any tool calls
         """
+        conversation_id = conversation_id or str(datetime.now().timestamp())
         provider = self._select_provider()
         if not provider:
             return ChatResponse(
                 message="AI service is not configured. Please set ANTHROPIC_API_KEY or OPENAI_API_KEY.",
-                conversation_id="error",
+                conversation_id=conversation_id,
                 model_used="none",
             )
 
@@ -378,7 +380,7 @@ class AIService:
                 return ChatResponse(
                     message=message_text,
                     tool_calls=tool_calls or None,
-                    conversation_id=str(datetime.now().timestamp()),
+                    conversation_id=conversation_id,
                     model_used=settings.claude_model,
                     tokens_used=tokens_used,
                 )
@@ -408,7 +410,7 @@ class AIService:
             return ChatResponse(
                 message=message.content or "",
                 tool_calls=tool_calls,
-                conversation_id=str(datetime.now().timestamp()),
+                conversation_id=conversation_id,
                 model_used=settings.openai_model,
                 tokens_used=response.usage.total_tokens if response.usage else None,
             )
@@ -417,7 +419,7 @@ class AIService:
             logger.error(f"Chat error: {e}")
             return ChatResponse(
                 message=f"Sorry, I encountered an error: {str(e)}",
-                conversation_id="error",
+                conversation_id=conversation_id,
                 model_used=settings.openai_model,
             )
 

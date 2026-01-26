@@ -116,6 +116,16 @@ struct ChatBubble: View {
         HStack {
             if message.isFromUser {
                 Spacer(minLength: 60)
+            } else {
+                Image("ChatBot")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 36, height: 36)
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle().stroke(Theme.Colors.border, lineWidth: 1)
+                    )
+                    .accessibilityHidden(true)
             }
 
             VStack(alignment: message.isFromUser ? .trailing : .leading, spacing: Theme.Spacing.xxs) {

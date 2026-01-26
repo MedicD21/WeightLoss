@@ -3,7 +3,7 @@ from datetime import datetime, date
 from typing import Optional, List
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class BodyWeightBase(BaseModel):
@@ -29,8 +29,7 @@ class BodyWeightResponse(BodyWeightBase):
     source: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WaterBase(BaseModel):
@@ -52,8 +51,7 @@ class WaterResponse(WaterBase):
     source: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StepsDailyResponse(BaseModel):
@@ -68,8 +66,7 @@ class StepsDailyResponse(BaseModel):
     source: str
     synced_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DailyWaterSummary(BaseModel):

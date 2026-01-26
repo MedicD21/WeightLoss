@@ -511,6 +511,15 @@ async def get_progress_summary(
             if targets.calories * 0.9 <= cal <= targets.calories * 1.1:
                 days_on_target += 1
 
+    daily_water_totals: dict[date, int] = {}
+    for entry in water_entries:
+        entry_date = entry.timestamp.date()
+        daily_water_totals[entry_date] = daily_water_totals.get(entry_date, 0) + entry.amount_ml
+    water_goal_days_hit = sum(
+        1 for total_ml in daily_water_totals.values()
+        if total_ml >= current_user.daily_water_goal_ml
+    )
+
     return ProgressSummary(
         period_start=start_date,
         period_end=end_date,
@@ -533,7 +542,7 @@ async def get_progress_summary(
         total_calories_burned=sum(w.calories_burned or 0 for w in workouts),
         avg_daily_water_ml=round(avg_water) if avg_water else None,
         water_goal_ml=current_user.daily_water_goal_ml,
-        water_goal_days_hit=sum(1 for w in water_entries if w.amount_ml >= current_user.daily_water_goal_ml),
+        water_goal_days_hit=water_goal_days_hit,
     )
 
 
