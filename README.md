@@ -1,8 +1,8 @@
-# Ada Fitness Tracker
+# Logged
 
-A dark minimalist workout + nutrition tracker with an AI assistant that can estimate macros and log meals/workouts via chat.
+Logged is a dark minimalist workout + nutrition tracker with an AI assistant that can estimate macros and log meals/workouts via chat.
 
-![Ada Logo](docs/logo-placeholder.png)
+![Logged Logo](docs/logo-placeholder.png)
 
 ## Features
 
@@ -14,7 +14,7 @@ A dark minimalist workout + nutrition tracker with an AI assistant that can esti
 - **Progress Charts**: Visualize trends with filterable date ranges
 
 ### AI Features
-- **Ada Chat Assistant**: Natural language interface for logging
+- **Logged Chat Assistant**: Natural language interface for logging
   - "I had 2 eggs and toast for breakfast"
   - "Log 500ml water"
   - "I did 30 minutes of running"
@@ -61,9 +61,10 @@ ada/
 
 ### Backend
 - **FastAPI** - Async Python web framework
-- **PostgreSQL** - Primary database
+- **Neon PostgreSQL** - Primary database (Postgres-compatible)
 - **SQLAlchemy** - Async ORM
-- **OpenAI API** - AI chat and vision
+- **Anthropic Claude** - AI chat and vision (default)
+- **OpenAI API** - Optional AI provider
 - **JWT** - Authentication
 
 ## Getting Started
@@ -71,15 +72,15 @@ ada/
 ### Prerequisites
 - Xcode 15+ (for iOS app)
 - Python 3.11+
-- PostgreSQL 15+
+- PostgreSQL 15+ (only if not using Neon)
 - Docker (optional)
 
 ### Backend Setup
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/yourusername/ada-fitness.git
-cd ada-fitness
+git clone https://github.com/yourusername/logged.git
+cd logged
 ```
 
 2. **Create environment file**
@@ -94,6 +95,11 @@ cp .env.example .env
 docker-compose up -d
 ```
 
+For local Postgres instead of Neon:
+```bash
+docker-compose --profile local-db up -d
+```
+
 Or **manually**:
 ```bash
 # Create virtual environment
@@ -103,7 +109,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Start PostgreSQL
+# Start PostgreSQL (if not using Neon)
 # ... (ensure PostgreSQL is running)
 
 # Run migrations
@@ -139,11 +145,20 @@ open Ada.xcodeproj
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql+asyncpg://ada:ada_secret@localhost:5432/ada_db` |
+| `DATABASE_URL` | Neon PostgreSQL connection string (include `?sslmode=require`) | `postgresql+asyncpg://user:pass@host/db?sslmode=require` |
+| `AUTH_DATABASE_URL` | Optional separate auth DB (defaults to `DATABASE_URL`) | (optional) |
 | `JWT_SECRET_KEY` | Secret key for JWT tokens | (required) |
+| `AI_PROVIDER` | `anthropic` or `openai` | `anthropic` |
+| `ANTHROPIC_API_KEY` | Anthropic API key for AI features | (required for Anthropic) |
+| `CLAUDE_MODEL` | Model for chat | `claude-sonnet-4-20250514` |
+| `CLAUDE_VISION_MODEL` | Model for vision | `claude-sonnet-4-20250514` |
+| `CLAUDE_MAX_TOKENS` | Max tokens for AI responses | `4096` |
 | `OPENAI_API_KEY` | OpenAI API key for AI features | (optional) |
 | `OPENAI_MODEL` | Model for chat | `gpt-4-turbo-preview` |
 | `OPENAI_VISION_MODEL` | Model for vision | `gpt-4-vision-preview` |
+| `OPENAI_BASE_URL` | OpenAI-compatible base URL | (optional) |
+
+If `AUTH_DATABASE_URL` is set to a different Neon database, the backend will mirror user profile records there for auth isolation. The primary app data still lives in `DATABASE_URL`.
 
 ## API Endpoints
 
@@ -178,7 +193,7 @@ open Ada.xcodeproj
 - `GET /tracking/daily/{date}` - Get daily summary
 
 ### AI
-- `POST /ai/chat` - Chat with Ada assistant
+- `POST /ai/chat` - Chat with Logged assistant
 - `POST /ai/vision/analyze` - Analyze food photo
 
 ## Macro Calculator
@@ -217,7 +232,7 @@ Run tests in Xcode with Cmd+U
 
 ## Design System
 
-Ada uses a dark minimalist theme:
+Logged uses a dark minimalist theme:
 
 - **Background**: `#0A0A0A`
 - **Surface**: `#141414`
@@ -269,6 +284,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Acknowledgments
 
 - [Open Food Facts](https://openfoodfacts.org/) for nutrition database
-- [OpenAI](https://openai.com/) for AI capabilities
+- [Anthropic](https://www.anthropic.com/) for Claude AI capabilities
+- [OpenAI](https://openai.com/) for optional AI capabilities
 - [FastAPI](https://fastapi.tiangolo.com/) for the excellent framework
 - [SwiftUI](https://developer.apple.com/xcode/swiftui/) for modern iOS development

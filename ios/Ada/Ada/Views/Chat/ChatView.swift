@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-/// Chat interface with Ada AI assistant
+/// Chat interface with Logged AI assistant
 struct ChatView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -49,7 +49,7 @@ struct ChatView: View {
                 .focused($isInputFocused)
             }
             .background(Theme.Colors.background)
-            .navigationTitle("Ada")
+            .navigationTitle("Logged")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -101,7 +101,7 @@ struct ChatView: View {
         let welcomeMessage = ChatMessage(
             userId: profile.id,
             role: .assistant,
-            content: "Hi! I'm Ada, your fitness assistant. I can help you:\n\n• Log meals and snacks\n• Track water intake\n• Record workouts\n• Answer nutrition questions\n\nJust tell me what you ate or did, and I'll take care of the rest!"
+            content: "Hi! I'm Logged, your fitness assistant. I can help you:\n\n• Log meals and snacks\n• Track water intake\n• Record workouts\n• Answer nutrition questions\n\nJust tell me what you ate or did, and I'll take care of the rest!"
         )
         modelContext.insert(welcomeMessage)
     }
@@ -196,7 +196,7 @@ struct ChatInputBar: View {
             }
 
             // Text field
-            TextField("Message Ada...", text: $text, axis: .vertical)
+            TextField("Message Logged...", text: $text, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.Colors.textPrimary)

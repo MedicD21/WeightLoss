@@ -25,6 +25,7 @@ from app.schemas.chat import (
     ToolResult,
 )
 from app.services.ai_service import ai_service
+from app.services.auth_service import auth_service
 from app.services.open_food_facts import off_client
 from app.utils.auth import get_current_user
 
@@ -308,6 +309,7 @@ async def _add_weight(db: AsyncSession, user: UserProfile, args: dict) -> ToolRe
     user.current_weight_kg = args["weight_kg"]
 
     await db.flush()
+    await auth_service.sync_user_profile(user)
 
     return ToolResult(
         tool_call_id="add_weight",
@@ -368,6 +370,7 @@ async def _set_goal(db: AsyncSession, user: UserProfile, args: dict) -> ToolResu
             db.add(targets)
 
     await db.flush()
+    await auth_service.sync_user_profile(user)
 
     return ToolResult(
         tool_call_id="set_goal",

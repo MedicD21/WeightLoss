@@ -81,7 +81,7 @@ struct MainTabView: View {
     }
 }
 
-/// Floating button to open Ada chat
+/// Floating button to open Logged chat
 struct FloatingChatButton: View {
     @EnvironmentObject private var appState: AppState
 
@@ -92,7 +92,7 @@ struct FloatingChatButton: View {
             HStack(spacing: Theme.Spacing.xs) {
                 Image(systemName: "bubble.left.and.bubble.right.fill")
                     .font(.system(size: 18, weight: .semibold))
-                Text("Ada")
+                Text("Logged")
                     .font(Theme.Typography.headline)
             }
             .foregroundColor(.white)

@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.models.base import AsyncAuthSessionLocal
 from app.models.user import UserProfile
 from app.schemas.auth import TokenResponse, TokenPayload
 
@@ -247,6 +248,7 @@ class AuthService:
         user = result.scalar_one_or_none()
 
         if user:
+            await self.sync_user_profile(user)
             return user
 
         # Create new user
@@ -256,6 +258,7 @@ class AuthService:
         )
         db.add(user)
         await db.flush()
+        await self.sync_user_profile(user)
 
         return user
 
@@ -285,6 +288,7 @@ class AuthService:
         user = result.scalar_one_or_none()
 
         if user:
+            await self.sync_user_profile(user)
             return user
 
         # Try to find by email if provided
@@ -298,6 +302,7 @@ class AuthService:
                 # Link Apple ID to existing account
                 user.apple_user_id = apple_user_id
                 await db.flush()
+                await self.sync_user_profile(user)
                 return user
 
         # Create new user
@@ -309,8 +314,29 @@ class AuthService:
         )
         db.add(user)
         await db.flush()
+        await self.sync_user_profile(user)
 
         return user
+
+    async def sync_user_profile(self, user: UserProfile) -> None:
+        """Mirror user profile data to the auth database if configured."""
+        if not settings.auth_database_url or settings.auth_database_url == settings.database_url:
+            return
+
+        try:
+            async with AsyncAuthSessionLocal() as auth_session:
+                existing = await auth_session.get(UserProfile, user.id)
+                data = user.to_dict()
+
+                if existing:
+                    for key, value in data.items():
+                        setattr(existing, key, value)
+                else:
+                    auth_session.add(UserProfile(**data))
+
+                await auth_session.commit()
+        except Exception as e:
+            logger.warning(f"Failed to sync user profile to auth DB: {e}")
 
 
 # Singleton instance

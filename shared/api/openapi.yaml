@@ -1,15 +1,15 @@
 openapi: 3.0.3
 info:
-  title: Ada Fitness Tracker API
-  description: API for the Ada fitness and nutrition tracking application
+  title: Logged Fitness Tracker API
+  description: API for the Logged fitness and nutrition tracking application
   version: 1.0.0
   contact:
-    email: contact@ada-fitness.app
+    email: contact@logged.app
 
 servers:
   - url: http://localhost:8000
     description: Development server
-  - url: https://api.ada-fitness.app
+  - url: https://api.logged.app
     description: Production server
 
 tags:
@@ -223,7 +223,7 @@ paths:
   /ai/chat:
     post:
       tags: [AI]
-      summary: Chat with Ada assistant
+      summary: Chat with Logged assistant
       security:
         - bearerAuth: []
       requestBody:

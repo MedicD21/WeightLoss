@@ -1,4 +1,4 @@
-# Ada Fitness Tracker - Docker Compose
+# Logged Fitness Tracker - Docker Compose
 
 version: '3.8'
 
@@ -8,13 +8,10 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://ada:ada_secret@db:5432/ada_db
       - REDIS_URL=redis://redis:6379/0
     env_file:
       - .env
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_started
     volumes:
@@ -24,18 +21,20 @@ services:
   db:
     image: postgres:15-alpine
     environment:
-      - POSTGRES_USER=ada
-      - POSTGRES_PASSWORD=ada_secret
-      - POSTGRES_DB=ada_db
+      - POSTGRES_USER=logged
+      - POSTGRES_PASSWORD=logged_secret
+      - POSTGRES_DB=logged_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ada -d ada_db"]
+      test: ["CMD-SHELL", "pg_isready -U logged -d logged_db"]
       interval: 5s
       timeout: 5s
       retries: 5
+    profiles:
+      - local-db
 
   redis:
     image: redis:7-alpine
@@ -48,14 +47,14 @@ services:
   pgadmin:
     image: dpage/pgadmin4:latest
     environment:
-      - PGADMIN_DEFAULT_EMAIL=admin@ada-fitness.app
+      - PGADMIN_DEFAULT_EMAIL=admin@logged.app
       - PGADMIN_DEFAULT_PASSWORD=admin
     ports:
       - "5050:80"
     depends_on:
       - db
     profiles:
-      - dev
+      - local-db
 
 volumes:
   postgres_data:

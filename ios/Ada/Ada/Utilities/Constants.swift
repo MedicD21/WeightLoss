@@ -8,7 +8,7 @@ enum Constants {
         #if DEBUG
         static let baseURL = "http://localhost:8000"
         #else
-        static let baseURL = "https://api.ada-fitness.app"
+        static let baseURL = "https://api.logged.app"
         #endif
 
         static let timeout: TimeInterval = 30
@@ -17,7 +17,7 @@ enum Constants {
     // MARK: - Keychain
 
     enum Keychain {
-        static let serviceName = "com.ada.fitness"
+        static let serviceName = "com.logged.fitness"
         static let accessTokenKey = "access_token"
         static let refreshTokenKey = "refresh_token"
     }
@@ -57,7 +57,7 @@ enum Constants {
 
     enum OpenFoodFacts {
         static let baseURL = "https://world.openfoodfacts.org/api/v2"
-        static let userAgent = "Ada Fitness Tracker iOS/1.0"
+        static let userAgent = "Logged Fitness Tracker iOS/1.0"
     }
 
     // MARK: - Date Formats

@@ -19,6 +19,7 @@ from app.schemas.user import (
     ProfileCompleteness,
 )
 from app.services.macro_calculator import MacroCalculator
+from app.services.auth_service import auth_service
 from app.utils.auth import get_current_user
 
 router = APIRouter(prefix="/user", tags=["User"])
@@ -46,6 +47,7 @@ async def update_profile(
 
     await db.flush()
     await db.refresh(current_user)
+    await auth_service.sync_user_profile(current_user)
 
     return current_user
 

@@ -1,4 +1,4 @@
-"""Ada Fitness Tracker API - Main Application."""
+"""Logged Fitness Tracker API - Main Application."""
 import logging
 from contextlib import asynccontextmanager
 
@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import get_settings
-from app.models.base import init_db
+from app.models.base import init_db, init_auth_db
 from app.routes import (
     auth_router,
     user_router,
@@ -31,12 +31,15 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
-    logger.info("Starting Ada Fitness Tracker API...")
+    logger.info("Starting Logged Fitness Tracker API...")
     await init_db()
     logger.info("Database initialized")
+    if settings.auth_database_url and settings.auth_database_url != settings.database_url:
+        await init_auth_db()
+        logger.info("Auth database initialized")
     yield
     # Shutdown
-    logger.info("Shutting down Ada Fitness Tracker API...")
+    logger.info("Shutting down Logged Fitness Tracker API...")
 
 
 # Create FastAPI application
@@ -44,7 +47,7 @@ app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="""
-    Ada Fitness Tracker API - A comprehensive fitness and nutrition tracking backend.
+    Logged Fitness Tracker API - A comprehensive fitness and nutrition tracking backend.
 
     ## Features
     - User profile and macro target management
