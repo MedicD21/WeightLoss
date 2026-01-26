@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Optional, Any
 from uuid import UUID
 
+from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 
 from app.config import get_settings
@@ -225,7 +226,7 @@ ASSISTANT_TOOLS = [
     }
 ]
 
-SYSTEM_PROMPT = """You are Ada, a friendly and knowledgeable fitness assistant. You help users track their nutrition, workouts, water intake, and body weight.
+SYSTEM_PROMPT = """You are Logged, a friendly and knowledgeable fitness assistant. You help users track their nutrition, workouts, water intake, and body weight.
 
 Key behaviors:
 1. Be concise and helpful. Don't be overly chatty.
@@ -254,10 +255,43 @@ class AIService:
 
     def __init__(self):
         """Initialize the AI service."""
-        self.client = AsyncOpenAI(
+        self.openai_client = AsyncOpenAI(
             api_key=settings.openai_api_key,
             base_url=settings.openai_base_url,
         ) if settings.openai_api_key else None
+        self.anthropic_client = AsyncAnthropic(
+            api_key=settings.anthropic_api_key,
+        ) if settings.anthropic_api_key else None
+
+    def _select_provider(self) -> Optional[str]:
+        """Select the active AI provider based on config and available keys."""
+        preferred = settings.ai_provider.lower().strip()
+
+        if preferred == "anthropic" and self.anthropic_client:
+            return "anthropic"
+        if preferred == "openai" and self.openai_client:
+            return "openai"
+
+        if self.anthropic_client:
+            return "anthropic"
+        if self.openai_client:
+            return "openai"
+
+        return None
+
+    def _build_anthropic_tools(self) -> list[dict]:
+        """Convert OpenAI-style tool definitions to Anthropic tool schema."""
+        tools = []
+        for tool in ASSISTANT_TOOLS:
+            function = tool.get("function", {})
+            tools.append(
+                {
+                    "name": function.get("name", ""),
+                    "description": function.get("description", ""),
+                    "input_schema": function.get("parameters", {"type": "object", "properties": {}}),
+                }
+            )
+        return tools
 
     async def chat(
         self,
@@ -276,9 +310,10 @@ class AIService:
         Returns:
             ChatResponse with message and any tool calls
         """
-        if not self.client:
+        provider = self._select_provider()
+        if not provider:
             return ChatResponse(
-                message="AI service is not configured. Please set OPENAI_API_KEY.",
+                message="AI service is not configured. Please set ANTHROPIC_API_KEY or OPENAI_API_KEY.",
                 conversation_id="error",
                 model_used="none",
             )
@@ -299,7 +334,56 @@ class AIService:
         messages.append({"role": "user", "content": user_message})
 
         try:
-            response = await self.client.chat.completions.create(
+            if provider == "anthropic":
+                system_prompt = SYSTEM_PROMPT
+                if user_context:
+                    system_prompt = f"{SYSTEM_PROMPT}\n\n{self._build_context_message(user_context)}"
+
+                anthropic_messages = []
+                if conversation_history:
+                    anthropic_messages.extend(conversation_history[-10:])
+                anthropic_messages.append({"role": "user", "content": user_message})
+
+                response = await self.anthropic_client.messages.create(
+                    model=settings.claude_model,
+                    messages=anthropic_messages,
+                    system=system_prompt,
+                    tools=self._build_anthropic_tools(),
+                    tool_choice={"type": "auto"},
+                    temperature=0.7,
+                    max_tokens=settings.claude_max_tokens,
+                )
+
+                content_blocks = response.content or []
+                message_text = "\n".join(
+                    block.text for block in content_blocks
+                    if block.type == "text" and block.text
+                ).strip()
+
+                tool_calls = [
+                    ToolCall(
+                        id=block.id,
+                        name=block.name,
+                        arguments=block.input,
+                    )
+                    for block in content_blocks
+                    if block.type == "tool_use"
+                ]
+
+                usage = response.usage
+                tokens_used = None
+                if usage and hasattr(usage, "input_tokens") and hasattr(usage, "output_tokens"):
+                    tokens_used = usage.input_tokens + usage.output_tokens
+
+                return ChatResponse(
+                    message=message_text,
+                    tool_calls=tool_calls or None,
+                    conversation_id=str(datetime.now().timestamp()),
+                    model_used=settings.claude_model,
+                    tokens_used=tokens_used,
+                )
+
+            response = await self.openai_client.chat.completions.create(
                 model=settings.openai_model,
                 messages=messages,
                 tools=ASSISTANT_TOOLS,
@@ -352,7 +436,8 @@ class AIService:
         Returns:
             VisionAnalyzeResponse with estimated items and totals
         """
-        if not self.client:
+        provider = self._select_provider()
+        if not provider:
             return VisionAnalyzeResponse(
                 items=[],
                 totals={"calories": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0},
@@ -395,28 +480,55 @@ Be realistic with estimates. If you're uncertain, use lower confidence scores.""
             prompt += f"\n\nUser context: {additional_context}"
 
         try:
-            response = await self.client.chat.completions.create(
-                model=settings.openai_vision_model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{image_base64}",
-                                    "detail": "high",
+            if provider == "anthropic":
+                response = await self.anthropic_client.messages.create(
+                    model=settings.claude_vision_model,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": "image/jpeg",
+                                        "data": image_base64,
+                                    },
                                 },
-                            },
-                        ],
-                    }
-                ],
-                max_tokens=1500,
-                temperature=0.3,
-            )
-
-            content = response.choices[0].message.content
+                            ],
+                        }
+                    ],
+                    max_tokens=settings.claude_max_tokens,
+                    temperature=0.3,
+                )
+                content_blocks = response.content or []
+                content = "\n".join(
+                    block.text for block in content_blocks
+                    if block.type == "text" and block.text
+                )
+            else:
+                response = await self.openai_client.chat.completions.create(
+                    model=settings.openai_vision_model,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{image_base64}",
+                                        "detail": "high",
+                                    },
+                                },
+                            ],
+                        }
+                    ],
+                    max_tokens=1500,
+                    temperature=0.3,
+                )
+                content = response.choices[0].message.content
             # Parse JSON from response
             try:
                 # Find JSON in response
@@ -453,7 +565,10 @@ Be realistic with estimates. If you're uncertain, use lower confidence scores.""
                     totals=totals,
                     confidence=data.get("overall_confidence", 0.5),
                     description=data.get("description", "Food image analyzed"),
-                    model_used=settings.openai_vision_model,
+                    model_used=(
+                        settings.claude_vision_model if provider == "anthropic"
+                        else settings.openai_vision_model
+                    ),
                 )
 
             except (json.JSONDecodeError, KeyError) as e:
@@ -463,7 +578,10 @@ Be realistic with estimates. If you're uncertain, use lower confidence scores.""
                     totals={"calories": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0},
                     confidence=0,
                     description=f"Failed to parse response: {content[:200]}",
-                    model_used=settings.openai_vision_model,
+                    model_used=(
+                        settings.claude_vision_model if provider == "anthropic"
+                        else settings.openai_vision_model
+                    ),
                 )
 
         except Exception as e:
@@ -473,7 +591,10 @@ Be realistic with estimates. If you're uncertain, use lower confidence scores.""
                 totals={"calories": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0},
                 confidence=0,
                 description=f"Error analyzing image: {str(e)}",
-                model_used=settings.openai_vision_model,
+                model_used=(
+                    settings.claude_vision_model if provider == "anthropic"
+                    else settings.openai_vision_model
+                ),
             )
 
     def _build_context_message(self, user_context: dict) -> str:

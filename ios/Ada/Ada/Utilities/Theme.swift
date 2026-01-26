@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Ada's dark minimalist design system
+/// Logged's dark minimalist design system
 enum Theme {
     // MARK: - Colors
 

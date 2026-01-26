@@ -183,7 +183,7 @@ struct WelcomeStep: View {
                     .font(.system(size: 60))
                     .foregroundColor(Theme.Colors.accent)
 
-                Text("Welcome to Ada")
+                Text("Welcome to Logged")
                     .font(Theme.Typography.title1)
                     .foregroundColor(Theme.Colors.textPrimary)
 

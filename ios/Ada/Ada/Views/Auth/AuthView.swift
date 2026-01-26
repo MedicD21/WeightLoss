@@ -19,7 +19,7 @@ struct AuthView: View {
                     .font(.system(size: 80))
                     .foregroundColor(Theme.Colors.accent)
 
-                Text("Ada")
+                Text("Logged")
                     .font(Theme.Typography.largeTitle)
                     .foregroundColor(Theme.Colors.textPrimary)
 

@@ -51,8 +51,23 @@ engine = create_async_engine(
     max_overflow=20,
 )
 
+auth_engine = create_async_engine(
+    settings.auth_database_url or settings.database_url,
+    echo=settings.database_echo,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+)
+
 AsyncSessionLocal = async_sessionmaker(
     engine,
+    expire_on_commit=False,
+    autocommit=False,
+    autoflush=False,
+)
+
+AsyncAuthSessionLocal = async_sessionmaker(
+    auth_engine,
     expire_on_commit=False,
     autocommit=False,
     autoflush=False,
@@ -72,7 +87,26 @@ async def get_db():
             await session.close()
 
 
+async def get_auth_db():
+    """Dependency to get auth database session."""
+    async with AsyncAuthSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+
 async def init_db():
     """Initialize database tables."""
     async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+async def init_auth_db():
+    """Initialize auth database tables."""
+    async with auth_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

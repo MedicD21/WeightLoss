@@ -25,6 +25,7 @@ from app.schemas.tracking import (
     ChartData,
     ChartDataPoint,
 )
+from app.services.auth_service import auth_service
 from app.utils.auth import get_current_user
 
 router = APIRouter(prefix="/tracking", tags=["Tracking"])
@@ -80,6 +81,7 @@ async def log_weight(
 
     await db.flush()
     await db.refresh(entry)
+    await auth_service.sync_user_profile(current_user)
 
     return entry
 

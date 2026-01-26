@@ -1,14 +1,18 @@
-# Ada Fitness Tracker - Architecture Document
+# Logged Fitness Tracker - Architecture Document
 
 ## Overview
 
-Ada is a dark minimalist workout + nutrition tracker with an AI assistant that can estimate macros and log meals/workouts via chat. The system follows a clean architecture with clear separation between UI, business logic, and data layers.
+Logged is a dark minimalist workout + nutrition tracker with an AI assistant that can estimate macros and log meals/workouts via chat. The system follows a clean architecture with clear separation between UI, business logic, and data layers.
+
+The AI layer defaults to Anthropic Claude (chat + vision) with optional OpenAI fallback via configuration.
+The backend uses Neon-hosted PostgreSQL for primary storage.
+An optional separate auth database can mirror user profiles for isolation when `AUTH_DATABASE_URL` is provided.
 
 ## System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         iOS App (Ada)                            │
+│                        iOS App (Logged)                           │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐             │
 │  │   SwiftUI   │  │   Charts    │  │  AVFoundation│             │
@@ -57,7 +61,7 @@ Ada is a dark minimalist workout + nutrition tracker with an AI assistant that c
 │  └─────────────────────────────────────────────────────────┘   │
 │                              │                                   │
 │  ┌───────────────────────────┴─────────────────────────────┐   │
-│  │              PostgreSQL Database                         │   │
+│  │              Neon PostgreSQL Database                    │   │
 │  └─────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
                               │
@@ -65,8 +69,8 @@ Ada is a dark minimalist workout + nutrition tracker with an AI assistant that c
           ┌───────────────────┼───────────────────┐
           ▼                   ▼                   ▼
 ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
-│  OpenAI API      │ │  Open Food Facts │ │  Apple HealthKit │
-│  (Vision + Chat) │ │  API             │ │  (on-device)     │
+│  Anthropic API   │ │  Open Food Facts │ │  Apple HealthKit │
+│  (Claude + Vision)│ │  API            │ │  (on-device)     │
 └──────────────────┘ └──────────────────┘ └──────────────────┘
 ```
 

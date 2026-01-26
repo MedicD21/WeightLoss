@@ -1,9 +1,9 @@
 import SwiftUI
 import SwiftData
 
-/// Main entry point for the Ada Fitness Tracker app
+/// Main entry point for the Logged Fitness Tracker app
 @main
-struct AdaApp: App {
+struct LoggedApp: App {
     @StateObject private var appState = AppState()
 
     var sharedModelContainer: ModelContainer = {

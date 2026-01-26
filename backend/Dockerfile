@@ -1,4 +1,4 @@
-# Ada Fitness Tracker API - Dockerfile
+# Logged Fitness Tracker API - Dockerfile
 
 FROM python:3.11-slim
 
