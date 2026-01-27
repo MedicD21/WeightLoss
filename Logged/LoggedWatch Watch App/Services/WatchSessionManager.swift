@@ -73,4 +73,13 @@ extension WatchSessionManager: WCSessionDelegate {
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
         handleTokenPayload(userInfo)
     }
+
+    func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        handleTokenPayload(message)
+    }
+
+    func session(_ session: WCSession, didReceiveMessage message: [String: Any], replyHandler: @escaping ([String: Any]) -> Void) {
+        handleTokenPayload(message)
+        replyHandler(["status": "ok"])
+    }
 }

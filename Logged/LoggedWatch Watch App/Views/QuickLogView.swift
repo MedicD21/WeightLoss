@@ -2,7 +2,14 @@ import SwiftUI
 
 struct QuickLogView: View {
     @StateObject private var viewModel = QuickLogViewModel()
-    @State private var weightKg: Double = 70
+    @State private var weightKg: Double = WatchUnitConverter.lbToKg(170)
+
+    private var weightLbs: Binding<Double> {
+        Binding(
+            get: { WatchUnitConverter.kgToLb(weightKg) },
+            set: { weightKg = WatchUnitConverter.lbToKg($0) }
+        )
+    }
 
     var body: some View {
         ScrollView {
@@ -14,9 +21,10 @@ struct QuickLogView: View {
                     Text("Water")
                         .font(.subheadline)
                     HStack {
-                        ForEach(WatchConstants.Defaults.quickWaterOptions, id: \.self) { amount in
-                            Button("+\(amount)") {
-                                Task { await viewModel.logWater(amountMl: amount) }
+                        ForEach(WatchConstants.Defaults.quickWaterOptionsOz, id: \.self) { ounces in
+                            Button("+\(Int(ounces)) oz") {
+                                let ml = WatchUnitConverter.flOzToMl(ounces)
+                                Task { await viewModel.logWater(amountMl: ml) }
                             }
                         }
                     }
@@ -27,8 +35,8 @@ struct QuickLogView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Weight")
                         .font(.subheadline)
-                    Stepper(value: $weightKg, in: 30...200, step: 0.1) {
-                        Text(String(format: "%.1f kg", weightKg))
+                    Stepper(value: weightLbs, in: 90...350, step: 1) {
+                        Text(String(format: "%.1f lb", WatchUnitConverter.kgToLb(weightKg)))
                     }
                     Button("Log Weight") {
                         Task { await viewModel.logWeight(weightKg: weightKg) }

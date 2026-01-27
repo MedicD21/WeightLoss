@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     db_auto_init: bool = False
 
     # Server
-    host: str = "0.0.0.0"
+    host: str = "192.168.6.72"
     port: int = 8000
 
     # Database

@@ -25,7 +25,7 @@ struct SummaryView: View {
                         SummaryRow(label: "Target", value: "\(target)")
                     }
                     SummaryRow(label: "Protein", value: String(format: "%.0fg", summary.proteinG))
-                    SummaryRow(label: "Water", value: "\(summary.waterMl) ml")
+                    SummaryRow(label: "Water", value: String(format: "%.0f oz", WatchUnitConverter.mlToFlOz(summary.waterMl)))
                     if let steps = summary.steps {
                         SummaryRow(label: "Steps", value: "\(steps)")
                     }

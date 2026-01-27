@@ -24,6 +24,6 @@ enum WatchConstants {
     }
 
     enum Defaults {
-        static let quickWaterOptions: [Int] = [250, 500, 750]
+        static let quickWaterOptionsOz: [Double] = [8, 12, 16]
     }
 }

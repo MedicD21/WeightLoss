@@ -1,12 +1,15 @@
 import Foundation
 import Security
 
+/// Service for secure storage of sensitive data in Keychain
 final class KeychainService {
     static let shared = KeychainService()
 
     private let service = Constants.Keychain.serviceName
 
     private init() {}
+
+    // MARK: - Token Management
 
     func saveToken(_ token: String) {
         save(key: Constants.Keychain.accessTokenKey, value: token)
@@ -32,15 +35,15 @@ final class KeychainService {
         delete(key: Constants.Keychain.refreshTokenKey)
     }
 
-    func clearAll() {
-        deleteToken()
-        deleteRefreshToken()
-    }
+    // MARK: - Generic Operations
 
-    private func save(key: String, value: String) {
+    func save(key: String, value: String) {
         guard let data = value.data(using: .utf8) else { return }
+
+        // Delete any existing item
         delete(key: key)
 
+        // Create query
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -49,13 +52,14 @@ final class KeychainService {
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
 
+        // Add item
         let status = SecItemAdd(query as CFDictionary, nil)
         if status != errSecSuccess {
             print("Keychain save error: \(status)")
         }
     }
 
-    private func get(key: String) -> String? {
+    func get(key: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -76,7 +80,7 @@ final class KeychainService {
         return value
     }
 
-    private func delete(key: String) {
+    func delete(key: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -84,5 +88,10 @@ final class KeychainService {
         ]
 
         SecItemDelete(query as CFDictionary)
+    }
+
+    func clearAll() {
+        deleteToken()
+        deleteRefreshToken()
     }
 }
