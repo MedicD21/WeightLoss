@@ -452,18 +452,120 @@ struct AddWorkoutView: View {
 }
 
 struct CreatePlanView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query private var userProfiles: [UserProfile]
     @Environment(\.dismiss) private var dismiss
+
+    @State private var name = ""
+    @State private var planDescription = ""
+    @State private var workoutType: WorkoutType = .strength
+    @State private var estimatedDurationText = ""
+    @State private var scheduledDays: Set<Int> = []
+    @State private var errorMessage: String?
+
+    private let dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
     var body: some View {
         NavigationStack {
-            Text("Create Plan View")
-                .navigationTitle("New Plan")
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Cancel") { dismiss() }
+            Form {
+                Section("Plan") {
+                    TextField("Name", text: $name)
+                    TextField("Description (optional)", text: $planDescription)
+                    Picker("Type", selection: $workoutType) {
+                        ForEach(WorkoutType.allCases, id: \.self) { type in
+                            Text(type.displayName).tag(type)
+                        }
                     }
                 }
+
+                Section("Schedule") {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                        Text("Days")
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                        HStack {
+                            ForEach(dayNames.indices, id: \.self) { index in
+                                Button {
+                                    toggleDay(index)
+                                } label: {
+                                    Text(dayNames[index])
+                                        .font(Theme.Typography.caption)
+                                        .foregroundColor(scheduledDays.contains(index) ? .white : Theme.Colors.textSecondary)
+                                        .padding(.horizontal, Theme.Spacing.sm)
+                                        .padding(.vertical, Theme.Spacing.xs)
+                                        .background(scheduledDays.contains(index) ? Theme.Colors.accent : Theme.Colors.surface)
+                                        .cornerRadius(Theme.Radius.full)
+                                }
+                            }
+                        }
+                    }
+
+                    HStack {
+                        TextField("Estimated minutes", text: $estimatedDurationText)
+                            .keyboardType(.numberPad)
+                        Text("min")
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                }
+
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.error)
+                }
+            }
+            .navigationTitle("New Plan")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") { savePlan() }
+                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
         }
+    }
+
+    private func toggleDay(_ index: Int) {
+        if scheduledDays.contains(index) {
+            scheduledDays.remove(index)
+        } else {
+            scheduledDays.insert(index)
+        }
+    }
+
+    private func savePlan() {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            errorMessage = "Name is required."
+            return
+        }
+
+        let profile = getOrCreateProfile()
+        let duration = Int(estimatedDurationText)
+        let days = scheduledDays.isEmpty ? nil : scheduledDays.sorted()
+
+        let plan = WorkoutPlan(
+            userId: profile.id,
+            name: trimmedName,
+            planDescription: planDescription.isEmpty ? nil : planDescription,
+            workoutType: workoutType,
+            scheduledDays: days,
+            estimatedDurationMin: duration
+        )
+
+        modelContext.insert(plan)
+        dismiss()
+    }
+
+    private func getOrCreateProfile() -> UserProfile {
+        if let profile = userProfiles.first {
+            return profile
+        }
+        let profile = UserProfile(email: "user@example.com")
+        modelContext.insert(profile)
+        return profile
     }
 }
 

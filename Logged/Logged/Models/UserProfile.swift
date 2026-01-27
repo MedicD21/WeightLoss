@@ -133,11 +133,11 @@ final class UserProfile {
     var targetWeightKg: Double?
 
     // Macro calculation preferences
-    var macroPlan: MacroPlan
-    var macroProteinPercent: Double
-    var macroCarbsPercent: Double
-    var macroFatPercent: Double
-    var useManualMacros: Bool
+    var macroPlan: MacroPlan?
+    var macroProteinPercent: Double?
+    var macroCarbsPercent: Double?
+    var macroFatPercent: Double?
+    var useManualMacros: Bool?
     var manualCalories: Int?
     var manualProteinG: Double?
     var manualCarbsG: Double?
@@ -203,6 +203,24 @@ final class UserProfile {
         self.proteinPerKg = proteinPerKg
         self.createdAt = Date()
         self.updatedAt = Date()
+    }
+
+    // Defaults to keep migrations lightweight when new non-optional fields are added
+    var macroPlanValue: MacroPlan {
+        macroPlan ?? .balanced
+    }
+
+    var macroPercentsValue: (protein: Double, carbs: Double, fat: Double) {
+        let defaults = macroPlanValue.defaultPercents
+        return (
+            protein: macroProteinPercent ?? defaults.protein,
+            carbs: macroCarbsPercent ?? defaults.carbs,
+            fat: macroFatPercent ?? defaults.fat
+        )
+    }
+
+    var useManualMacrosValue: Bool {
+        useManualMacros ?? false
     }
 
     var age: Int? {

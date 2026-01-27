@@ -516,7 +516,7 @@ struct EditProfileView: View {
             modelContext.insert(targetModel)
         }
 
-        if profile.useManualMacros,
+        if profile.useManualMacrosValue,
            let protein = profile.manualProteinG,
            let carbs = profile.manualCarbsG,
            let fat = profile.manualFatG {
@@ -548,8 +548,8 @@ struct EditProfileView: View {
             activityLevel: profile.activityLevel,
             goalType: profile.goalType,
             goalRateKgPerWeek: profile.goalRateKgPerWeek,
-            macroPlan: profile.macroPlan,
-            macroPercents: (protein: profile.macroProteinPercent, carbs: profile.macroCarbsPercent, fat: profile.macroFatPercent)
+            macroPlan: profile.macroPlanValue,
+            macroPercents: profile.macroPercentsValue
         )
 
         targetModel.calories = targets.calories
@@ -728,12 +728,13 @@ struct EditGoalsView: View {
             targetWeightText = String(format: "%.1f", target)
         }
 
-        macroPlan = profile.macroPlan
-        proteinPercentText = String(format: "%.0f", profile.macroProteinPercent)
-        carbsPercentText = String(format: "%.0f", profile.macroCarbsPercent)
-        fatPercentText = String(format: "%.0f", profile.macroFatPercent)
+        macroPlan = profile.macroPlanValue
+        let percents = profile.macroPercentsValue
+        proteinPercentText = String(format: "%.0f", percents.protein)
+        carbsPercentText = String(format: "%.0f", percents.carbs)
+        fatPercentText = String(format: "%.0f", percents.fat)
 
-        useManualMacros = profile.useManualMacros
+        useManualMacros = profile.useManualMacrosValue
         if let manualCalories = profile.manualCalories {
             manualCaloriesText = "\(manualCalories)"
         }
@@ -850,7 +851,7 @@ struct EditGoalsView: View {
             modelContext.insert(targetModel)
         }
 
-        if profile.useManualMacros,
+        if profile.useManualMacrosValue,
            let protein = profile.manualProteinG,
            let carbs = profile.manualCarbsG,
            let fat = profile.manualFatG {
@@ -882,8 +883,8 @@ struct EditGoalsView: View {
             activityLevel: profile.activityLevel,
             goalType: profile.goalType,
             goalRateKgPerWeek: profile.goalRateKgPerWeek,
-            macroPlan: profile.macroPlan,
-            macroPercents: (protein: profile.macroProteinPercent, carbs: profile.macroCarbsPercent, fat: profile.macroFatPercent)
+            macroPlan: profile.macroPlanValue,
+            macroPercents: profile.macroPercentsValue
         )
 
         targetModel.calories = targets.calories

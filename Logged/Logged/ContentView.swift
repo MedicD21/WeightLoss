@@ -4,12 +4,9 @@ import SwiftData
 /// Root content view that handles navigation
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
-    @Environment(\.modelContext) private var modelContext
-    @State private var showChatButton = true
-    @State private var hideChatButtonTask: Task<Void, Never>?
 
     private var shouldShowChatButton: Bool {
-        appState.isAuthenticated && appState.isOnboarded && !appState.showingChat && showChatButton
+        appState.isAuthenticated && appState.isOnboarded && !appState.showingChat
     }
 
     var body: some View {
@@ -35,43 +32,12 @@ struct ContentView: View {
                         Spacer()
                         FloatingChatHandle()
                     }
-                    .padding(.trailing, Theme.Spacing.lg)
+                    .padding(.trailing, -Theme.Spacing.xs)
                     .padding(.bottom, 90) // Above tab bar
                 }
             }
         }
         .preferredColorScheme(.dark)
-        .onAppear {
-            updateChatButtonVisibility()
-        }
-        .onChange(of: appState.isAuthenticated) { _, _ in
-            updateChatButtonVisibility()
-        }
-        .onChange(of: appState.isOnboarded) { _, _ in
-            updateChatButtonVisibility()
-        }
-        .onChange(of: appState.showingChat) { _, _ in
-            updateChatButtonVisibility()
-        }
-    }
-
-    private func updateChatButtonVisibility() {
-        hideChatButtonTask?.cancel()
-
-        guard appState.isAuthenticated, appState.isOnboarded, !appState.showingChat else {
-            showChatButton = false
-            return
-        }
-
-        showChatButton = true
-        hideChatButtonTask = Task {
-            try? await Task.sleep(for: .seconds(10))
-            await MainActor.run {
-                if appState.isAuthenticated && appState.isOnboarded && !appState.showingChat {
-                    showChatButton = false
-                }
-            }
-        }
     }
 }
 
@@ -152,6 +118,7 @@ struct FloatingChatHandle: View {
                 .shadow(color: Theme.Shadows.small, radius: 6, x: 0, y: 3)
         )
         .offset(x: min(0, dragOffset.width))
+        .offset(x: 14)
         .gesture(
             DragGesture(minimumDistance: 10)
                 .updating($dragOffset) { value, state, _ in

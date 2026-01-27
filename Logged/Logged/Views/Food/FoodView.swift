@@ -1,5 +1,8 @@
 import SwiftUI
 import SwiftData
+import AVFoundation
+import PhotosUI
+import UIKit
 
 /// Food tracking view
 struct FoodView: View {
@@ -501,35 +504,510 @@ struct AddMealView: View {
 }
 
 struct BarcodeScannerView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query private var userProfiles: [UserProfile]
     @Environment(\.dismiss) private var dismiss
+
+    @State private var manualCode = ""
+    @State private var product: OFFProduct?
+    @State private var isLookingUp = false
+    @State private var gramsText = ""
+    @State private var errorMessage: String?
+    @State private var hasCameraPermission = AVCaptureDevice.authorizationStatus(for: .video) != .denied
 
     var body: some View {
         NavigationStack {
-            Text("Barcode Scanner")
-                .navigationTitle("Scan Barcode")
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Cancel") { dismiss() }
+            ScrollView {
+                VStack(spacing: Theme.Spacing.md) {
+                    if hasCameraPermission {
+                        BarcodeScannerPreview { code in
+                            handleScannedCode(code)
+                        }
+                        .frame(height: 240)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.large))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.Radius.large)
+                                .stroke(Theme.Colors.border, lineWidth: 1)
+                        )
+                    } else {
+                        VStack(spacing: Theme.Spacing.sm) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 40))
+                                .foregroundColor(Theme.Colors.textTertiary)
+                            Text("Camera access is needed to scan barcodes.")
+                                .font(Theme.Typography.subheadline)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(Theme.Spacing.lg)
+                        .cardStyle()
+                    }
+
+                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                        Text("Enter barcode manually")
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                        HStack {
+                            TextField("0123456789012", text: $manualCode)
+                                .keyboardType(.numberPad)
+                                .textFieldStyle(.plain)
+                                .padding(Theme.Spacing.sm)
+                                .background(Theme.Colors.surface)
+                                .cornerRadius(Theme.Radius.medium)
+                            Button("Lookup") {
+                                handleScannedCode(manualCode)
+                            }
+                            .buttonStyle(.secondary)
+                            .disabled(manualCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
+
+                    if isLookingUp {
+                        SwiftUI.ProgressView("Looking up product...")
+                            .tint(Theme.Colors.accent)
+                            .padding(.vertical, Theme.Spacing.sm)
+                    }
+
+                    if let product {
+                        productCard(product)
+                    }
+
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.error)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.bottom, Theme.Spacing.xl)
+            }
+            .background(Theme.Colors.background)
+            .navigationTitle("Scan Barcode")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .onAppear {
+            requestCameraPermissionIfNeeded()
+        }
+    }
+
+    @ViewBuilder
+    private func productCard(_ product: OFFProduct) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text(product.name)
+                .font(Theme.Typography.headline)
+                .foregroundColor(Theme.Colors.textPrimary)
+
+            if let brands = product.brands {
+                Text(brands)
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.textSecondary)
+            }
+
+            HStack(spacing: Theme.Spacing.md) {
+                nutritionChip(label: "Calories/100g", value: "\(product.caloriesPer100g ?? 0)")
+                nutritionChip(label: "Protein", value: String(format: "%.0fg", product.proteinPer100g ?? 0))
+                nutritionChip(label: "Carbs", value: String(format: "%.0fg", product.carbsPer100g ?? 0))
+                nutritionChip(label: "Fat", value: String(format: "%.0fg", product.fatPer100g ?? 0))
+            }
+
+            HStack {
+                TextField("Grams", text: $gramsText)
+                    .keyboardType(.decimalPad)
+                    .textFieldStyle(.plain)
+                    .padding(Theme.Spacing.sm)
+                    .background(Theme.Colors.surface)
+                    .cornerRadius(Theme.Radius.medium)
+                Text("g")
+                    .foregroundColor(Theme.Colors.textSecondary)
+            }
+
+            Button("Add to Meals") {
+                addProductToMeals(product)
+            }
+            .buttonStyle(.primary)
+        }
+        .padding(Theme.Spacing.md)
+        .cardStyle(elevated: true)
+        .onAppear {
+            if gramsText.isEmpty {
+                gramsText = String(format: "%.0f", product.defaultServingG)
+            }
+        }
+    }
+
+    private func nutritionChip(label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(Theme.Typography.caption2)
+                .foregroundColor(Theme.Colors.textTertiary)
+            Text(value)
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.textPrimary)
+        }
+        .padding(.vertical, Theme.Spacing.xs)
+        .padding(.horizontal, Theme.Spacing.sm)
+        .background(Theme.Colors.surfaceHighlight)
+        .cornerRadius(Theme.Radius.small)
+    }
+
+    private func handleScannedCode(_ code: String) {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        manualCode = trimmed
+        lookupProduct(for: trimmed)
+    }
+
+    private func lookupProduct(for code: String) {
+        errorMessage = nil
+        product = nil
+        isLookingUp = true
+
+        Task {
+            defer { isLookingUp = false }
+            do {
+                product = try await OpenFoodFactsService.shared.lookupBarcode(code)
+                if product == nil {
+                    errorMessage = "No product found for that barcode."
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func addProductToMeals(_ product: OFFProduct) {
+        guard let grams = Double(gramsText), grams > 0 else {
+            errorMessage = "Enter a valid gram amount."
+            return
+        }
+
+        let profile = getOrCreateProfile()
+        let meal = Meal(
+            userId: profile.id,
+            name: product.name,
+            mealType: .other,
+            timestamp: Date()
+        )
+
+        let item = product.toFoodItem(grams: grams)
+        item.meal = meal
+        meal.addItem(item)
+
+        modelContext.insert(meal)
+        modelContext.insert(item)
+        dismiss()
+    }
+
+    private func getOrCreateProfile() -> UserProfile {
+        if let profile = userProfiles.first {
+            return profile
+        }
+        let profile = UserProfile(email: "user@example.com")
+        modelContext.insert(profile)
+        return profile
+    }
+
+    private func requestCameraPermissionIfNeeded() {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        if status == .notDetermined {
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                Task { @MainActor in
+                    hasCameraPermission = granted
+                }
+            }
+        } else {
+            hasCameraPermission = status != .denied && status != .restricted
         }
     }
 }
 
 struct FoodPhotoView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query private var userProfiles: [UserProfile]
     @Environment(\.dismiss) private var dismiss
+
+    @State private var selectedItem: PhotosPickerItem?
+    @State private var imageData: Data?
+    @State private var analysis: VisionAnalyzeResponse?
+    @State private var isAnalyzing = false
+    @State private var errorMessage: String?
+    @State private var mealType: MealType = .other
 
     var body: some View {
         NavigationStack {
-            Text("Food Photo Analysis")
-                .navigationTitle("Photo")
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Cancel") { dismiss() }
+            ScrollView {
+                VStack(spacing: Theme.Spacing.md) {
+                    PhotosPicker(selection: $selectedItem, matching: .images) {
+                        VStack(spacing: Theme.Spacing.sm) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 40))
+                                .foregroundColor(Theme.Colors.accent)
+                            Text(imageData == nil ? "Choose Photo" : "Choose Different Photo")
+                                .font(Theme.Typography.headline)
+                                .foregroundColor(Theme.Colors.textPrimary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(Theme.Spacing.lg)
+                        .cardStyle()
+                    }
+
+                    if let imageData, let uiImage = UIImage(data: imageData) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxHeight: 240)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.large))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: Theme.Radius.large)
+                                    .stroke(Theme.Colors.border, lineWidth: 1)
+                            )
+                    }
+
+                    if isAnalyzing {
+                        SwiftUI.ProgressView("Analyzing photo...")
+                            .tint(Theme.Colors.accent)
+                            .padding(.vertical, Theme.Spacing.sm)
+                    }
+
+                    if let analysis {
+                        analysisCard(analysis)
+                    }
+
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.error)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.bottom, Theme.Spacing.xl)
+            }
+            .background(Theme.Colors.background)
+            .navigationTitle("Photo")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            .onChange(of: selectedItem) { _, newItem in
+                guard let newItem else { return }
+                loadPhoto(from: newItem)
+            }
         }
     }
+
+    @ViewBuilder
+    private func analysisCard(_ analysis: VisionAnalyzeResponse) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text("AI Analysis")
+                .font(Theme.Typography.headline)
+                .foregroundColor(Theme.Colors.textPrimary)
+
+            Text(analysis.description)
+                .font(Theme.Typography.subheadline)
+                .foregroundColor(Theme.Colors.textSecondary)
+
+            HStack(spacing: Theme.Spacing.md) {
+                nutritionChip(label: "Calories", value: "\(analysis.totals.calories)")
+                nutritionChip(label: "Protein", value: String(format: "%.0fg", analysis.totals.proteinG))
+                nutritionChip(label: "Carbs", value: String(format: "%.0fg", analysis.totals.carbsG))
+                nutritionChip(label: "Fat", value: String(format: "%.0fg", analysis.totals.fatG))
+            }
+
+            Picker("Meal Type", selection: $mealType) {
+                ForEach(MealType.allCases, id: \.self) { type in
+                    Text(type.displayName).tag(type)
+                }
+            }
+
+            if !analysis.items.isEmpty {
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    Text("Items")
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                    ForEach(analysis.items) { item in
+                        HStack {
+                            Text(item.name)
+                                .font(Theme.Typography.subheadline)
+                                .foregroundColor(Theme.Colors.textPrimary)
+                            Spacer()
+                            Text("\(item.calories) cal")
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                    }
+                }
+            }
+
+            Button("Add to Meals") {
+                addAnalysisToMeals(analysis)
+            }
+            .buttonStyle(.primary)
+        }
+        .padding(Theme.Spacing.md)
+        .cardStyle(elevated: true)
+    }
+
+    private func nutritionChip(label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(Theme.Typography.caption2)
+                .foregroundColor(Theme.Colors.textTertiary)
+            Text(value)
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.textPrimary)
+        }
+        .padding(.vertical, Theme.Spacing.xs)
+        .padding(.horizontal, Theme.Spacing.sm)
+        .background(Theme.Colors.surfaceHighlight)
+        .cornerRadius(Theme.Radius.small)
+    }
+
+    private func loadPhoto(from item: PhotosPickerItem) {
+        errorMessage = nil
+        analysis = nil
+        isAnalyzing = true
+
+        Task {
+            defer { isAnalyzing = false }
+            do {
+                imageData = try await item.loadTransferable(type: Data.self)
+                guard let imageData else {
+                    errorMessage = "Could not load the selected photo."
+                    return
+                }
+                analysis = try await APIService.shared.analyzeFood(imageBase64: imageData.base64EncodedString())
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func addAnalysisToMeals(_ analysis: VisionAnalyzeResponse) {
+        let profile = getOrCreateProfile()
+        let mealName = analysis.description.isEmpty ? "Photo Meal" : analysis.description
+
+        let meal = Meal(
+            userId: profile.id,
+            name: mealName,
+            mealType: mealType,
+            timestamp: Date()
+        )
+
+        for visionItem in analysis.items {
+            let item = visionItem.toFoodItem()
+            item.meal = meal
+            meal.addItem(item)
+            modelContext.insert(item)
+        }
+
+        if analysis.items.isEmpty {
+            let fallback = FoodItem(
+                name: mealName,
+                source: .vision,
+                grams: 0,
+                calories: analysis.totals.calories,
+                proteinG: analysis.totals.proteinG,
+                carbsG: analysis.totals.carbsG,
+                fatG: analysis.totals.fatG,
+                confidence: analysis.confidence,
+                portionDescription: analysis.description
+            )
+            fallback.meal = meal
+            meal.addItem(fallback)
+            modelContext.insert(fallback)
+        }
+
+        modelContext.insert(meal)
+        dismiss()
+    }
+
+    private func getOrCreateProfile() -> UserProfile {
+        if let profile = userProfiles.first {
+            return profile
+        }
+        let profile = UserProfile(email: "user@example.com")
+        modelContext.insert(profile)
+        return profile
+    }
+}
+
+// MARK: - Barcode Scanner Preview
+
+private struct BarcodeScannerPreview: UIViewRepresentable {
+    let onCodeScanned: (String) -> Void
+
+    func makeUIView(context: Context) -> ScannerView {
+        let view = ScannerView()
+        context.coordinator.configureSession(for: view, onCodeScanned: onCodeScanned)
+        return view
+    }
+
+    func updateUIView(_ uiView: ScannerView, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate {
+        private let session = AVCaptureSession()
+        private var onCodeScanned: ((String) -> Void)?
+        private var hasScanned = false
+
+        func configureSession(for view: ScannerView, onCodeScanned: @escaping (String) -> Void) {
+            self.onCodeScanned = onCodeScanned
+            session.beginConfiguration()
+
+            guard let device = AVCaptureDevice.default(for: .video),
+                  let input = try? AVCaptureDeviceInput(device: device),
+                  session.canAddInput(input) else {
+                session.commitConfiguration()
+                return
+            }
+            session.addInput(input)
+
+            let output = AVCaptureMetadataOutput()
+            guard session.canAddOutput(output) else {
+                session.commitConfiguration()
+                return
+            }
+            session.addOutput(output)
+            output.setMetadataObjectsDelegate(self, queue: .main)
+            output.metadataObjectTypes = [.ean8, .ean13, .upce, .code128, .qr]
+
+            session.commitConfiguration()
+
+            view.previewLayer.session = session
+            view.previewLayer.videoGravity = .resizeAspectFill
+
+            DispatchQueue.global(qos: .userInitiated).async {
+                self.session.startRunning()
+            }
+        }
+
+        func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
+            guard !hasScanned,
+                  let object = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
+                  let code = object.stringValue else {
+                return
+            }
+            hasScanned = true
+            onCodeScanned?(code)
+            session.stopRunning()
+        }
+    }
+}
+
+private final class ScannerView: UIView {
+    override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
+    var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
 }
 
 #Preview {

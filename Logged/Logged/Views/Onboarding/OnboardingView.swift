@@ -134,8 +134,8 @@ struct OnboardingView: View {
                 activityLevel: activityLevel,
                 goalType: goalType,
                 goalRateKgPerWeek: goalRate,
-                macroPlan: profile.macroPlan,
-                macroPercents: (protein: profile.macroProteinPercent, carbs: profile.macroCarbsPercent, fat: profile.macroFatPercent)
+                macroPlan: profile.macroPlanValue,
+                macroPercents: profile.macroPercentsValue
             )
 
             let macroTargets = MacroTargets(

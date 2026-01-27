@@ -22,14 +22,10 @@ struct DashboardView: View {
                 VStack(spacing: Theme.Spacing.lg) {
                     // Quick actions
                     QuickActionsSection(
-                        waterOptions: waterQuickOptions,
                         onAddMeal: { showingAddMeal = true },
                         onAddWater: { showingAddWater = true },
                         onAddWeight: { showingAddWeight = true },
-                        onAddWorkout: { showingAddWorkout = true },
-                        onQuickAddWater: { amountMl in
-                            addWaterEntry(amountMl: amountMl)
-                        }
+                        onAddWorkout: { showingAddWorkout = true }
                     )
 
                     // Greeting
@@ -155,41 +151,8 @@ struct DashboardView: View {
         return String(format: "%.0f oz", UnitConverter.mlToFlOz(viewModel.summary.waterMl))
     }
 
-    private var waterQuickOptions: [WaterQuickOption] {
-        let useMetric = userProfile?.useMetric ?? false
-        if useMetric {
-            return [
-                WaterQuickOption(label: "250 ml", amountMl: 250),
-                WaterQuickOption(label: "500 ml", amountMl: 500),
-                WaterQuickOption(label: "750 ml", amountMl: 750),
-            ]
-        }
-        return [
-            WaterQuickOption(label: "8 oz", amountMl: UnitConverter.flOzToMl(8)),
-            WaterQuickOption(label: "16 oz", amountMl: UnitConverter.flOzToMl(16)),
-            WaterQuickOption(label: "24 oz", amountMl: UnitConverter.flOzToMl(24)),
-            WaterQuickOption(label: "40 oz", amountMl: UnitConverter.flOzToMl(40)),
-        ]
-    }
-
     private func refreshSummary() {
         Task { await viewModel.refresh(modelContext: modelContext) }
-    }
-
-    private func addWaterEntry(amountMl: Int) {
-        let profile = getOrCreateProfile()
-        let entry = WaterEntry(userId: profile.id, amountMl: amountMl)
-        modelContext.insert(entry)
-        refreshSummary()
-    }
-
-    private func getOrCreateProfile() -> UserProfile {
-        if let profile = userProfiles.first {
-            return profile
-        }
-        let profile = UserProfile(email: "user@example.com")
-        modelContext.insert(profile)
-        return profile
     }
 }
 
@@ -396,12 +359,10 @@ struct WorkoutSummaryCard: View {
 // MARK: - Quick Actions
 
 struct QuickActionsSection: View {
-    let waterOptions: [WaterQuickOption]
     let onAddMeal: () -> Void
     let onAddWater: () -> Void
     let onAddWeight: () -> Void
     let onAddWorkout: () -> Void
-    let onQuickAddWater: (Int) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
@@ -414,14 +375,6 @@ struct QuickActionsSection: View {
                 QuickActionButton(icon: "drop.fill", title: "Water", color: Theme.Colors.info, action: onAddWater)
                 QuickActionButton(icon: "scalemass.fill", title: "Weight", color: Theme.Colors.accent, action: onAddWeight)
                 QuickActionButton(icon: "figure.run", title: "Workout", color: Theme.Colors.warning, action: onAddWorkout)
-            }
-
-            HStack(spacing: Theme.Spacing.md) {
-                ForEach(waterOptions) { option in
-                    QuickWaterButton(option: option) {
-                        onQuickAddWater(option.amountMl)
-                    }
-                }
             }
         }
     }
@@ -498,6 +451,28 @@ struct QuickAddWaterView: View {
         userProfiles.first?.useMetric ?? false
     }
 
+    private var waterQuickOptions: [WaterQuickOption] {
+        if useMetric {
+            return [
+                WaterQuickOption(label: "250 ml", amountMl: 250),
+                WaterQuickOption(label: "500 ml", amountMl: 500),
+                WaterQuickOption(label: "750 ml", amountMl: 750),
+                WaterQuickOption(label: "1000 ml", amountMl: 1000),
+            ]
+        }
+        return [
+            WaterQuickOption(label: "8 oz", amountMl: UnitConverter.flOzToMl(8)),
+            WaterQuickOption(label: "16 oz", amountMl: UnitConverter.flOzToMl(16)),
+            WaterQuickOption(label: "24 oz", amountMl: UnitConverter.flOzToMl(24)),
+            WaterQuickOption(label: "40 oz", amountMl: UnitConverter.flOzToMl(40)),
+        ]
+    }
+
+    private let quickAddColumns = [
+        GridItem(.flexible(), spacing: Theme.Spacing.md),
+        GridItem(.flexible(), spacing: Theme.Spacing.md),
+    ]
+
     var body: some View {
         NavigationStack {
             Form {
@@ -507,6 +482,17 @@ struct QuickAddWaterView: View {
                             .keyboardType(.decimalPad)
                         Text(useMetric ? "ml" : "oz")
                             .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                }
+
+                Section("Quick Add") {
+                    LazyVGrid(columns: quickAddColumns, spacing: Theme.Spacing.sm) {
+                        ForEach(waterQuickOptions) { option in
+                            QuickWaterButton(option: option) {
+                                addWaterEntry(amountMl: option.amountMl)
+                                dismiss()
+                            }
+                        }
                     }
                 }
 
@@ -544,13 +530,9 @@ struct QuickAddWaterView: View {
             return
         }
 
-        let profile = getOrCreateProfile()
         let amountMl = useMetric ? Int(amount.rounded()) : UnitConverter.flOzToMl(amount)
 
-        let entry = WaterEntry(userId: profile.id, amountMl: amountMl)
-        modelContext.insert(entry)
-
-        onSaved?()
+        addWaterEntry(amountMl: amountMl)
         dismiss()
     }
 
@@ -561,6 +543,13 @@ struct QuickAddWaterView: View {
         let profile = UserProfile(email: "user@example.com")
         modelContext.insert(profile)
         return profile
+    }
+
+    private func addWaterEntry(amountMl: Int) {
+        let profile = getOrCreateProfile()
+        let entry = WaterEntry(userId: profile.id, amountMl: amountMl)
+        modelContext.insert(entry)
+        onSaved?()
     }
 }
 
