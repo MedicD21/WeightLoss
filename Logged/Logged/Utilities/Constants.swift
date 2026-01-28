@@ -6,7 +6,7 @@ enum Constants {
 
     enum API {
         #if DEBUG
-        static let baseURL = "http://192.168.6.72:8000"
+        static let baseURL = "http://192.168.1.185:8000"
         #else
         static let baseURL = "https://api.logged.app"
         #endif
