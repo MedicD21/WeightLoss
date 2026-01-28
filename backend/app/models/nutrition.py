@@ -108,6 +108,7 @@ class FoodItem(Base):
     # Barcode/OFF data
     barcode: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     off_product_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    nutri_score_grade: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
 
     # Vision AI metadata
     confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

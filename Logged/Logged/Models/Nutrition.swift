@@ -139,6 +139,7 @@ final class FoodItem {
     // Barcode/OFF data
     var barcode: String?
     var offProductId: String?
+    var nutriScoreGrade: String?
 
     // Vision AI metadata
     var confidence: Double?
@@ -160,6 +161,7 @@ final class FoodItem {
         servingUnit: String? = nil,
         servings: Double = 1.0,
         barcode: String? = nil,
+        nutriScoreGrade: String? = nil,
         confidence: Double? = nil,
         portionDescription: String? = nil
     ) {
@@ -176,6 +178,7 @@ final class FoodItem {
         self.servingUnit = servingUnit
         self.servings = servings
         self.barcode = barcode
+        self.nutriScoreGrade = nutriScoreGrade
         self.confidence = confidence
         self.portionDescription = portionDescription
         self.createdAt = Date()

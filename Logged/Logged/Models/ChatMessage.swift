@@ -163,7 +163,7 @@ struct VisionFoodItem: Decodable, Identifiable {
     let name: String
     let portionDescription: String
     let gramsEstimate: Double
-    let calories: Int
+    let calories: Double
     let proteinG: Double
     let carbsG: Double
     let fatG: Double
@@ -185,7 +185,7 @@ struct VisionFoodItem: Decodable, Identifiable {
         self.name = try container.decode(String.self, forKey: .name)
         self.portionDescription = try container.decode(String.self, forKey: .portionDescription)
         self.gramsEstimate = try container.decode(Double.self, forKey: .gramsEstimate)
-        self.calories = try container.decode(Int.self, forKey: .calories)
+        self.calories = try container.decode(Double.self, forKey: .calories)
         self.proteinG = try container.decode(Double.self, forKey: .proteinG)
         self.carbsG = try container.decode(Double.self, forKey: .carbsG)
         self.fatG = try container.decode(Double.self, forKey: .fatG)
@@ -196,7 +196,7 @@ struct VisionFoodItem: Decodable, Identifiable {
         name: String,
         portionDescription: String,
         gramsEstimate: Double,
-        calories: Int,
+        calories: Double,
         proteinG: Double,
         carbsG: Double,
         fatG: Double,
@@ -218,7 +218,7 @@ struct VisionFoodItem: Decodable, Identifiable {
             name: name,
             source: .vision,
             grams: gramsEstimate,
-            calories: calories,
+            calories: Int(round(calories)),
             proteinG: proteinG,
             carbsG: carbsG,
             fatG: fatG,
@@ -229,7 +229,7 @@ struct VisionFoodItem: Decodable, Identifiable {
 }
 
 struct MacroTotals: Decodable {
-    let calories: Int
+    let calories: Double
     let proteinG: Double
     let carbsG: Double
     let fatG: Double

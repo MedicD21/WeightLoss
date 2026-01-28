@@ -30,6 +30,29 @@ class FoodItemCreate(FoodItemBase):
     servings: float = Field(default=1.0, ge=0)
     barcode: Optional[str] = Field(None, max_length=50)
     off_product_id: Optional[str] = Field(None, max_length=100)
+    nutri_score_grade: Optional[str] = Field(None, max_length=5)
+    confidence: Optional[float] = Field(None, ge=0, le=1)
+    portion_description: Optional[str] = Field(None, max_length=200)
+
+
+class FoodItemUpdate(BaseModel):
+    """Schema for updating a food item."""
+    name: Optional[str] = Field(None, max_length=200)
+    grams: Optional[float] = Field(None, ge=0)
+    calories: Optional[int] = Field(None, ge=0)
+    protein_g: Optional[float] = Field(None, ge=0)
+    carbs_g: Optional[float] = Field(None, ge=0)
+    fat_g: Optional[float] = Field(None, ge=0)
+    fiber_g: Optional[float] = Field(None, ge=0)
+    sodium_mg: Optional[float] = Field(None, ge=0)
+    sugar_g: Optional[float] = Field(None, ge=0)
+    saturated_fat_g: Optional[float] = Field(None, ge=0)
+    serving_size: Optional[float] = None
+    serving_unit: Optional[str] = Field(None, max_length=50)
+    servings: Optional[float] = Field(None, ge=0)
+    barcode: Optional[str] = Field(None, max_length=50)
+    off_product_id: Optional[str] = Field(None, max_length=100)
+    nutri_score_grade: Optional[str] = Field(None, max_length=5)
     confidence: Optional[float] = Field(None, ge=0, le=1)
     portion_description: Optional[str] = Field(None, max_length=200)
 
@@ -43,6 +66,7 @@ class FoodItemResponse(FoodItemBase):
     serving_unit: Optional[str] = None
     servings: float
     barcode: Optional[str] = None
+    nutri_score_grade: Optional[str] = None
     confidence: Optional[float] = None
     portion_description: Optional[str] = None
     created_at: datetime

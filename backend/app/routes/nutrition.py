@@ -17,6 +17,7 @@ from app.schemas.nutrition import (
     MealResponse,
     MealSummary,
     FoodItemCreate,
+    FoodItemUpdate,
     SavedFoodCreate,
     SavedFoodResponse,
     OpenFoodFactsProduct,
@@ -125,6 +126,7 @@ async def create_meal(
             saturated_fat_g=item_data.saturated_fat_g,
             barcode=item_data.barcode,
             off_product_id=item_data.off_product_id,
+            nutri_score_grade=item_data.nutri_score_grade,
             confidence=item_data.confidence,
             portion_description=item_data.portion_description,
         )
@@ -209,12 +211,22 @@ async def add_food_item(
         name=item_data.name,
         source=item_data.source,
         grams=item_data.grams,
+        serving_size=item_data.serving_size,
+        serving_unit=item_data.serving_unit,
+        servings=item_data.servings,
         calories=item_data.calories,
         protein_g=item_data.protein_g,
         carbs_g=item_data.carbs_g,
         fat_g=item_data.fat_g,
         fiber_g=item_data.fiber_g,
+        sodium_mg=item_data.sodium_mg,
+        sugar_g=item_data.sugar_g,
+        saturated_fat_g=item_data.saturated_fat_g,
         barcode=item_data.barcode,
+        off_product_id=item_data.off_product_id,
+        nutri_score_grade=item_data.nutri_score_grade,
+        confidence=item_data.confidence,
+        portion_description=item_data.portion_description,
     )
     db.add(item)
 
@@ -222,6 +234,72 @@ async def add_food_item(
     meal.items.append(item)
     meal.recalculate_totals()
 
+    await db.flush()
+    await db.refresh(meal)
+
+    return meal
+
+
+@router.put("/meals/{meal_id}/items/{item_id}", response_model=MealResponse)
+async def update_food_item(
+    meal_id: UUID,
+    item_id: UUID,
+    updates: FoodItemUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserProfile = Depends(get_current_user),
+):
+    """Update a food item and recalculate meal totals."""
+    result = await db.execute(
+        select(Meal)
+        .where(and_(Meal.id == meal_id, Meal.user_id == current_user.id))
+        .options(selectinload(Meal.items))
+    )
+    meal = result.scalar_one_or_none()
+
+    if not meal:
+        raise HTTPException(status_code=404, detail="Meal not found")
+
+    item = next((item for item in meal.items if item.id == item_id), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="Food item not found")
+
+    update_data = updates.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(item, field, value)
+
+    meal.recalculate_totals()
+    await db.flush()
+    await db.refresh(meal)
+
+    return meal
+
+
+@router.delete("/meals/{meal_id}/items/{item_id}", response_model=MealResponse)
+async def delete_food_item(
+    meal_id: UUID,
+    item_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserProfile = Depends(get_current_user),
+):
+    """Delete a food item and recalculate meal totals."""
+    result = await db.execute(
+        select(Meal)
+        .where(and_(Meal.id == meal_id, Meal.user_id == current_user.id))
+        .options(selectinload(Meal.items))
+    )
+    meal = result.scalar_one_or_none()
+
+    if not meal:
+        raise HTTPException(status_code=404, detail="Meal not found")
+
+    item = next((item for item in meal.items if item.id == item_id), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="Food item not found")
+
+    await db.delete(item)
+    await db.flush()
+
+    meal.recalculate_totals()
     await db.flush()
     await db.refresh(meal)
 

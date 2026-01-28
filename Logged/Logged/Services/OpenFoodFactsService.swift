@@ -107,24 +107,69 @@ struct OFFProduct: Decodable {
         nutriments?.energyKcal100g.map(Int.init)
     }
 
+    var caloriesPerServing: Double? {
+        nutriments?.energyKcalServing
+    }
+
     var proteinPer100g: Double? {
         nutriments?.proteins100g
+    }
+
+    var proteinPerServing: Double? {
+        nutriments?.proteinsServing
     }
 
     var carbsPer100g: Double? {
         nutriments?.carbohydrates100g
     }
 
+    var carbsPerServing: Double? {
+        nutriments?.carbohydratesServing
+    }
+
     var fatPer100g: Double? {
         nutriments?.fat100g
+    }
+
+    var fatPerServing: Double? {
+        nutriments?.fatServing
     }
 
     var fiberPer100g: Double? {
         nutriments?.fiber100g
     }
 
+    var fiberPerServing: Double? {
+        nutriments?.fiberServing
+    }
+
+    var sugarAlcoholPer100g: Double? {
+        nutriments?.sugarAlcohol100g
+    }
+
+    var sugarAlcoholPerServing: Double? {
+        nutriments?.sugarAlcoholServing
+    }
+
+    var netCarbsPer100g: Double {
+        max(0, (carbsPer100g ?? 0) - (fiberPer100g ?? 0) - (sugarAlcoholPer100g ?? 0))
+    }
+
+    var netCarbsPerServing: Double? {
+        guard let carbs = carbsPerServing else { return nil }
+        return max(0, carbs - (fiberPerServing ?? 0) - (sugarAlcoholPerServing ?? 0))
+    }
+
     var defaultServingG: Double {
         servingQuantity ?? 100
+    }
+
+    var servingUnit: String? {
+        guard let servingSize = servingSize?.lowercased() else { return nil }
+        if servingSize.contains("ml") { return "ml" }
+        if servingSize.contains("g") { return "g" }
+        if servingSize.contains("oz") { return "oz" }
+        return nil
     }
 
     func toSavedFood(userId: UUID) -> SavedFood {
@@ -144,39 +189,72 @@ struct OFFProduct: Decodable {
     }
 
     func toFoodItem(grams: Double) -> FoodItem {
+        let servings = defaultServingG > 0 ? grams / defaultServingG : 1
         let multiplier = grams / 100.0
+        let calories = caloriesPerServing != nil
+            ? Int(round((caloriesPerServing ?? 0) * servings))
+            : Int(round(Double(caloriesPer100g ?? 0) * multiplier))
+        let protein = proteinPerServing != nil
+            ? (proteinPerServing ?? 0) * servings
+            : (proteinPer100g ?? 0) * multiplier
+        let netCarbs = netCarbsPerServing != nil
+            ? (netCarbsPerServing ?? 0) * servings
+            : netCarbsPer100g * multiplier
+        let fat = fatPerServing != nil
+            ? (fatPerServing ?? 0) * servings
+            : (fatPer100g ?? 0) * multiplier
+        let fiber = fiberPerServing != nil
+            ? fiberPerServing.map { $0 * servings }
+            : fiberPer100g.map { $0 * multiplier }
         return FoodItem(
             name: brands != nil ? "\(brands!) \(name)" : name,
             source: .openFoodFacts,
             grams: grams,
-            calories: Int(Double(caloriesPer100g ?? 0) * multiplier),
-            proteinG: (proteinPer100g ?? 0) * multiplier,
-            carbsG: (carbsPer100g ?? 0) * multiplier,
-            fatG: (fatPer100g ?? 0) * multiplier,
-            fiberG: fiberPer100g.map { $0 * multiplier },
+            calories: calories,
+            proteinG: protein,
+            carbsG: netCarbs,
+            fatG: fat,
+            fiberG: fiber,
             servingSize: defaultServingG,
-            barcode: code
+            servingUnit: servingUnit,
+            servings: servings,
+            barcode: code,
+            nutriScoreGrade: nutriscoreGrade
         )
     }
 }
 
 struct OFFNutriments: Decodable {
     let energyKcal100g: Double?
+    let energyKcalServing: Double?
     let proteins100g: Double?
+    let proteinsServing: Double?
     let carbohydrates100g: Double?
+    let carbohydratesServing: Double?
     let fat100g: Double?
+    let fatServing: Double?
     let fiber100g: Double?
+    let fiberServing: Double?
     let sugars100g: Double?
+    let sugarAlcohol100g: Double?
+    let sugarAlcoholServing: Double?
     let sodium100g: Double?
     let saturatedFat100g: Double?
 
     enum CodingKeys: String, CodingKey {
         case energyKcal100g = "energy-kcal_100g"
+        case energyKcalServing = "energy-kcal_serving"
         case proteins100g = "proteins_100g"
+        case proteinsServing = "proteins_serving"
         case carbohydrates100g = "carbohydrates_100g"
+        case carbohydratesServing = "carbohydrates_serving"
         case fat100g = "fat_100g"
+        case fatServing = "fat_serving"
         case fiber100g = "fiber_100g"
+        case fiberServing = "fiber_serving"
         case sugars100g = "sugars_100g"
+        case sugarAlcohol100g = "polyols_100g"
+        case sugarAlcoholServing = "polyols_serving"
         case sodium100g = "sodium_100g"
         case saturatedFat100g = "saturated-fat_100g"
     }

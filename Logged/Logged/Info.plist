@@ -7,5 +7,11 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Allow camera access to take food photos for analysis.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Allow photo library access to select food photos for analysis.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Allow saving food photos after analysis.</string>
 </dict>
 </plist>

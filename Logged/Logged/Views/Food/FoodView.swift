@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import AVFoundation
+import Photos
 import PhotosUI
 import UIKit
 
@@ -12,7 +13,11 @@ struct FoodView: View {
     @State private var showingAddMeal = false
     @State private var showingBarcodeScan = false
     @State private var showingPhotoCapture = false
+    @State private var editingMeal: Meal?
     @State private var selectedDate = Date()
+    @State private var syncError: String?
+    @State private var toastMessage: String?
+    @State private var isSyncing = false
 
     var body: some View {
         NavigationStack {
@@ -34,14 +39,34 @@ struct FoodView: View {
                     // Meals list
                     MealsListSection(
                         meals: mealsForSelectedDate,
+                        onEdit: { meal in editingMeal = meal },
                         onDelete: deleteMeal
                     )
+
+                    if let syncError {
+                        Text(syncError)
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.error)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.bottom, Theme.Spacing.xl)
             }
             .background(Theme.Colors.background)
             .navigationTitle("Food")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task {
+                            _ = await syncMeals(for: selectedDate, showToast: true)
+                        }
+                    } label: {
+                        Label("Sync", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(isSyncing)
+                }
+            }
             .sheet(isPresented: $showingAddMeal) {
                 AddMealView(date: selectedDate)
             }
@@ -50,6 +75,30 @@ struct FoodView: View {
             }
             .sheet(isPresented: $showingPhotoCapture) {
                 FoodPhotoView()
+            }
+            .sheet(item: $editingMeal) { meal in
+                EditMealView(meal: meal)
+            }
+            .task {
+                _ = await syncMeals(for: selectedDate)
+            }
+            .onChange(of: selectedDate) { _, newValue in
+                Task {
+                    _ = await syncMeals(for: newValue)
+                }
+            }
+            .overlay(alignment: .top) {
+                if let toastMessage {
+                    Text(toastMessage)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.textPrimary)
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.vertical, Theme.Spacing.sm)
+                        .background(Theme.Colors.surfaceHighlight)
+                        .cornerRadius(Theme.Radius.medium)
+                        .padding(.top, Theme.Spacing.sm)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
         }
     }
@@ -65,7 +114,71 @@ struct FoodView: View {
     }
 
     private func deleteMeal(_ meal: Meal) {
-        modelContext.delete(meal)
+        Task {
+            do {
+                try await APIService.shared.deleteMeal(id: meal.id)
+                await MainActor.run {
+                    modelContext.delete(meal)
+                    try? modelContext.save()
+                }
+            } catch {
+                await MainActor.run {
+                    syncError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func syncMeals(for date: Date, showToast: Bool = false) async -> Bool {
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? date
+
+        do {
+            await MainActor.run {
+                isSyncing = true
+            }
+            let summaries = try await APIService.shared.listMealSummaries(startDate: startOfDay, endDate: endOfDay)
+            var responses: [MealResponseDTO] = []
+            for summary in summaries {
+                let response = try await APIService.shared.fetchMeal(id: summary.id)
+                responses.append(response)
+            }
+
+            await MainActor.run {
+                for meal in recentMeals where meal.timestamp >= startOfDay && meal.timestamp < endOfDay {
+                    modelContext.delete(meal)
+                }
+                for response in responses {
+                    upsertMeal(response, modelContext: modelContext)
+                }
+                try? modelContext.save()
+                syncError = nil
+                isSyncing = false
+                if showToast {
+                    showToastMessage("Sync complete")
+                }
+            }
+            return true
+        } catch {
+            await MainActor.run {
+                syncError = error.localizedDescription
+                isSyncing = false
+            }
+            return false
+        }
+    }
+
+    private func showToastMessage(_ message: String) {
+        withAnimation {
+            toastMessage = message
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            withAnimation {
+                toastMessage = nil
+            }
+        }
     }
 }
 
@@ -243,6 +356,7 @@ struct AddOptionButton: View {
 
 struct MealsListSection: View {
     let meals: [Meal]
+    let onEdit: (Meal) -> Void
     let onDelete: (Meal) -> Void
 
     var groupedMeals: [(MealType, [Meal])] {
@@ -269,7 +383,11 @@ struct MealsListSection: View {
                         }
 
                         ForEach(meals) { meal in
-                            MealCard(meal: meal, onDelete: { onDelete(meal) })
+                            MealCard(
+                                meal: meal,
+                                onEdit: { onEdit(meal) },
+                                onDelete: { onDelete(meal) }
+                            )
                         }
                     }
                 }
@@ -280,14 +398,18 @@ struct MealsListSection: View {
 
 struct MealCard: View {
     let meal: Meal
+    let onEdit: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack {
+            HStack(spacing: Theme.Spacing.xs) {
                 Text(meal.name)
                     .font(Theme.Typography.headline)
                     .foregroundColor(Theme.Colors.textPrimary)
+                if let grade = meal.items.first(where: { ($0.nutriScoreGrade ?? "").isEmpty == false })?.nutriScoreGrade {
+                    NutriScoreBadge(grade: grade)
+                }
 
                 Spacer()
 
@@ -309,7 +431,7 @@ struct MealCard: View {
             }
 
             if !meal.items.isEmpty {
-                Text(meal.items.map { $0.name }.joined(separator: ", "))
+                Text(meal.items.map { itemDisplayName($0) }.joined(separator: ", "))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.textSecondary)
                     .lineLimit(1)
@@ -317,11 +439,30 @@ struct MealCard: View {
         }
         .padding(Theme.Spacing.md)
         .cardStyle()
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete", systemImage: "trash")
+            }
+            Button(action: onEdit) {
+                Label("Edit", systemImage: "pencil")
+            }
+            .tint(Theme.Colors.accent)
+        }
         .contextMenu {
+            Button(action: onEdit) {
+                Label("Edit", systemImage: "pencil")
+            }
             Button(role: .destructive, action: onDelete) {
                 Label("Delete", systemImage: "trash")
             }
         }
+    }
+
+    private func itemDisplayName(_ item: FoodItem) -> String {
+        if let grade = item.nutriScoreGrade, !grade.isEmpty {
+            return "\(item.name) (\(grade.uppercased()))"
+        }
+        return item.name
     }
 }
 
@@ -368,7 +509,6 @@ struct AddMealView: View {
     let date: Date
     var onSaved: (() -> Void)? = nil
     @Environment(\.modelContext) private var modelContext
-    @Query private var userProfiles: [UserProfile]
     @Environment(\.dismiss) private var dismiss
 
     @State private var mealName = ""
@@ -380,6 +520,7 @@ struct AddMealView: View {
     @State private var gramsText = ""
     @State private var notes = ""
     @State private var errorMessage: String?
+    @State private var isSaving = false
 
     var body: some View {
         NavigationStack {
@@ -446,18 +587,22 @@ struct AddMealView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Save") { saveMeal() }
-                        .disabled(mealName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(isSaving || mealName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
     }
 
     private func saveMeal() {
+        if isSaving { return }
         let trimmedName = mealName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
             errorMessage = "Meal name is required."
             return
         }
+
+        errorMessage = nil
+        isSaving = true
 
         let calories = Int(caloriesText) ?? 0
         let protein = Double(proteinText) ?? 0
@@ -465,55 +610,68 @@ struct AddMealView: View {
         let fat = Double(fatText) ?? 0
         let grams = Double(gramsText) ?? 100
 
-        let profile = getOrCreateProfile()
-        let meal = Meal(
-            userId: profile.id,
+        let itemRequest = FoodItemCreateRequestDTO(
             name: trimmedName,
-            mealType: mealType,
-            timestamp: date,
-            notes: notes.isEmpty ? nil : notes
-        )
-
-        let item = FoodItem(
-            name: trimmedName,
-            source: .manual,
             grams: grams,
             calories: calories,
             proteinG: protein,
             carbsG: carbs,
-            fatG: fat
+            fatG: fat,
+            fiberG: nil,
+            source: .manual,
+            servingSize: grams,
+            servingUnit: "g",
+            servings: 1,
+            barcode: nil,
+            offProductId: nil,
+            nutriScoreGrade: nil,
+            confidence: nil,
+            portionDescription: nil
         )
-        item.meal = meal
-        meal.addItem(item)
+        let request = MealCreateRequestDTO(
+            name: trimmedName,
+            mealType: mealType,
+            timestamp: date,
+            notes: notes.isEmpty ? nil : notes,
+            photoUrl: nil,
+            items: [itemRequest],
+            localId: nil
+        )
 
-        modelContext.insert(meal)
-        modelContext.insert(item)
-
-        onSaved?()
-        dismiss()
-    }
-
-    private func getOrCreateProfile() -> UserProfile {
-        if let profile = userProfiles.first {
-            return profile
+        Task {
+            do {
+                let response = try await APIService.shared.createMeal(request: request)
+                await MainActor.run {
+                    upsertMeal(response, modelContext: modelContext)
+                    try? modelContext.save()
+                    isSaving = false
+                    onSaved?()
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                    errorMessage = error.localizedDescription
+                }
+            }
         }
-        let profile = UserProfile(email: "user@example.com")
-        modelContext.insert(profile)
-        return profile
     }
+
 }
 
 struct BarcodeScannerView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var userProfiles: [UserProfile]
     @Environment(\.dismiss) private var dismiss
 
     @State private var manualCode = ""
     @State private var product: OFFProduct?
     @State private var isLookingUp = false
     @State private var gramsText = ""
+    @State private var servings: Double = 1
     @State private var errorMessage: String?
+    @State private var isSaving = false
     @State private var hasCameraPermission = AVCaptureDevice.authorizationStatus(for: .video) != .denied
+    private let servingOptions: [Double] = [0.25, 0.5, 1, 1.5, 2, 2.5, 3, 4, 5]
 
     var body: some View {
         NavigationStack {
@@ -569,9 +727,9 @@ struct BarcodeScannerView: View {
                             .padding(.vertical, Theme.Spacing.sm)
                     }
 
-                    if let product {
-                        productCard(product)
-                    }
+            if let product {
+                productCard(product)
+            }
 
                     if let errorMessage {
                         Text(errorMessage)
@@ -599,9 +757,15 @@ struct BarcodeScannerView: View {
     @ViewBuilder
     private func productCard(_ product: OFFProduct) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text(product.name)
-                .font(Theme.Typography.headline)
-                .foregroundColor(Theme.Colors.textPrimary)
+            HStack(spacing: Theme.Spacing.sm) {
+                Text(product.name)
+                    .font(Theme.Typography.headline)
+                    .foregroundColor(Theme.Colors.textPrimary)
+
+                if let grade = product.nutriscoreGrade {
+                    NutriScoreBadge(grade: grade)
+                }
+            }
 
             if let brands = product.brands {
                 Text(brands)
@@ -609,32 +773,69 @@ struct BarcodeScannerView: View {
                     .foregroundColor(Theme.Colors.textSecondary)
             }
 
+            let totalGrams = selectedAmountInGrams(for: product)
+            let totals = nutritionTotals(product: product, grams: totalGrams)
+
             HStack(spacing: Theme.Spacing.md) {
-                nutritionChip(label: "Calories/100g", value: "\(product.caloriesPer100g ?? 0)")
-                nutritionChip(label: "Protein", value: String(format: "%.0fg", product.proteinPer100g ?? 0))
-                nutritionChip(label: "Carbs", value: String(format: "%.0fg", product.carbsPer100g ?? 0))
-                nutritionChip(label: "Fat", value: String(format: "%.0fg", product.fatPer100g ?? 0))
+                nutritionChip(label: "Calories", value: "\(totals.calories)")
+                nutritionChip(label: "Protein", value: String(format: "%.0fg", totals.protein))
+                nutritionChip(label: "Net Carbs", value: String(format: "%.0fg", totals.netCarbs))
+                nutritionChip(label: "Fat", value: String(format: "%.0fg", totals.fat))
             }
 
-            HStack {
-                TextField("Grams", text: $gramsText)
-                    .keyboardType(.decimalPad)
-                    .textFieldStyle(.plain)
-                    .padding(Theme.Spacing.sm)
-                    .background(Theme.Colors.surface)
-                    .cornerRadius(Theme.Radius.medium)
-                Text("g")
-                    .foregroundColor(Theme.Colors.textSecondary)
+            if product.caloriesPerServing != nil || product.servingQuantity != nil || product.servingSize != nil {
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    HStack {
+                        Text("Serving Size")
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                        Spacer()
+                        Text(servingSizeDisplay(product: product))
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.textPrimary)
+                    }
+
+                    HStack {
+                        Text("Servings")
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                        Spacer()
+                        Text(String(format: "%.2g", servings))
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.textPrimary)
+                    }
+
+                    Picker("Servings", selection: $servings) {
+                        ForEach(servingOptions, id: \.self) { value in
+                            Text(String(format: "%.2g", value)).tag(value)
+                        }
+                    }
+                    .pickerStyle(.wheel)
+                    .frame(height: 120)
+                }
+            } else {
+                HStack {
+                    TextField("Grams", text: $gramsText)
+                        .keyboardType(.decimalPad)
+                        .textFieldStyle(.plain)
+                        .padding(Theme.Spacing.sm)
+                        .background(Theme.Colors.surface)
+                        .cornerRadius(Theme.Radius.medium)
+                    Text("g")
+                        .foregroundColor(Theme.Colors.textSecondary)
+                }
             }
 
             Button("Add to Meals") {
                 addProductToMeals(product)
             }
             .buttonStyle(.primary)
+            .disabled(isSaving)
         }
         .padding(Theme.Spacing.md)
         .cardStyle(elevated: true)
         .onAppear {
+            servings = 1
             if gramsText.isEmpty {
                 gramsText = String(format: "%.0f", product.defaultServingG)
             }
@@ -682,35 +883,42 @@ struct BarcodeScannerView: View {
     }
 
     private func addProductToMeals(_ product: OFFProduct) {
-        guard let grams = Double(gramsText), grams > 0 else {
-            errorMessage = "Enter a valid gram amount."
+        if isSaving { return }
+        let grams = selectedAmountInGrams(for: product)
+        guard grams > 0 else {
+            errorMessage = "Enter a valid amount."
             return
         }
 
-        let profile = getOrCreateProfile()
-        let meal = Meal(
-            userId: profile.id,
+        let item = product.toFoodItem(grams: grams)
+        let request = MealCreateRequestDTO(
             name: product.name,
             mealType: .other,
-            timestamp: Date()
+            timestamp: Date(),
+            notes: nil,
+            photoUrl: nil,
+            items: [foodItemRequest(from: item)],
+            localId: nil
         )
 
-        let item = product.toFoodItem(grams: grams)
-        item.meal = meal
-        meal.addItem(item)
-
-        modelContext.insert(meal)
-        modelContext.insert(item)
-        dismiss()
-    }
-
-    private func getOrCreateProfile() -> UserProfile {
-        if let profile = userProfiles.first {
-            return profile
+        errorMessage = nil
+        isSaving = true
+        Task {
+            do {
+                let response = try await APIService.shared.createMeal(request: request)
+                await MainActor.run {
+                    upsertMeal(response, modelContext: modelContext)
+                    try? modelContext.save()
+                    isSaving = false
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                    errorMessage = error.localizedDescription
+                }
+            }
         }
-        let profile = UserProfile(email: "user@example.com")
-        modelContext.insert(profile)
-        return profile
     }
 
     private func requestCameraPermissionIfNeeded() {
@@ -725,30 +933,364 @@ struct BarcodeScannerView: View {
             hasCameraPermission = status != .denied && status != .restricted
         }
     }
+
+    private func selectedAmountInGrams(for product: OFFProduct) -> Double {
+        if product.caloriesPerServing != nil || product.servingQuantity != nil {
+            let base = product.servingQuantity ?? product.defaultServingG
+            return base * servings
+        }
+        return Double(gramsText) ?? 0
+    }
+
+    private func nutritionTotals(product: OFFProduct, grams: Double) -> (calories: Int, protein: Double, netCarbs: Double, fat: Double) {
+        let multiplier = grams / 100.0
+        let caloriesPerServing = product.caloriesPerServing
+        let proteinPerServing = product.proteinPerServing
+        let fatPerServing = product.fatPerServing
+        let netCarbsPerServing = product.netCarbsPerServing
+
+        let caloriesPer100g = Double(product.caloriesPer100g ?? 0)
+        let proteinPer100g = product.proteinPer100g ?? 0
+        let fatPer100g = product.fatPer100g ?? 0
+        let netCarbsPer100g = max(
+            0,
+            (product.carbsPer100g ?? 0) - (product.fiberPer100g ?? 0) - (product.sugarAlcoholPer100g ?? 0)
+        )
+
+        let calories = caloriesPerServing != nil
+            ? Int(round((caloriesPerServing ?? 0) * servings))
+            : Int(round(caloriesPer100g * multiplier))
+        let protein = proteinPerServing != nil
+            ? (proteinPerServing ?? 0) * servings
+            : proteinPer100g * multiplier
+        let fat = fatPerServing != nil
+            ? (fatPerServing ?? 0) * servings
+            : fatPer100g * multiplier
+        let netCarbs = netCarbsPerServing != nil
+            ? (netCarbsPerServing ?? 0) * servings
+            : netCarbsPer100g * multiplier
+        return (calories, protein, netCarbs, fat)
+    }
+
+    private func servingUnit(for product: OFFProduct) -> String? {
+        guard let servingSize = product.servingSize?.lowercased() else { return nil }
+        if servingSize.contains("ml") { return "ml" }
+        if servingSize.contains("g") { return "g" }
+        if servingSize.contains("oz") { return "oz" }
+        return nil
+    }
+
+    private func servingSizeDisplay(product: OFFProduct) -> String {
+        if let servingSize = product.servingSize, !servingSize.isEmpty {
+            return servingSize
+        }
+        if let quantity = product.servingQuantity, let unit = servingUnit(for: product) {
+            return String(format: "%.0f %@", quantity, unit)
+        }
+        return String(format: "%.0f g", product.defaultServingG)
+    }
+
+}
+
+private struct NutriScoreBadge: View {
+    let grade: String
+
+    var body: some View {
+        Text(grade.uppercased())
+            .font(Theme.Typography.caption2)
+            .padding(.horizontal, Theme.Spacing.xs)
+            .padding(.vertical, 2)
+            .background(badgeColor)
+            .foregroundColor(.black)
+            .clipShape(Capsule())
+    }
+
+    private var badgeColor: Color {
+        switch grade.lowercased() {
+        case "a": return Color.green.opacity(0.8)
+        case "b": return Color.green.opacity(0.6)
+        case "c": return Color.yellow.opacity(0.8)
+        case "d": return Color.orange.opacity(0.8)
+        case "e": return Color.red.opacity(0.8)
+        default: return Theme.Colors.surfaceHighlight
+        }
+    }
+}
+
+private struct CameraImagePicker: UIViewControllerRepresentable {
+    @Binding var image: UIImage?
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        private let parent: CameraImagePicker
+
+        init(_ parent: CameraImagePicker) {
+            self.parent = parent
+        }
+
+        func imagePickerController(
+            _ picker: UIImagePickerController,
+            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]
+        ) {
+            if let uiImage = info[.originalImage] as? UIImage {
+                parent.image = uiImage
+            }
+            parent.dismiss()
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.dismiss()
+        }
+    }
+}
+
+struct EditMealView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var mealName: String
+    @State private var mealType: MealType
+    @State private var itemGrams: [UUID: String]
+    @State private var errorMessage: String?
+    @State private var deletedItemIDs = Set<UUID>()
+    @State private var isSaving = false
+
+    let meal: Meal
+
+    init(meal: Meal) {
+        self.meal = meal
+        _mealName = State(initialValue: meal.name)
+        _mealType = State(initialValue: meal.mealType)
+        _itemGrams = State(
+            initialValue: Dictionary(uniqueKeysWithValues: meal.items.map { ($0.id, String(format: "%.0f", $0.grams)) })
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Meal") {
+                    TextField("Meal name", text: $mealName)
+                    Picker("Meal Type", selection: $mealType) {
+                        ForEach(MealType.allCases, id: \.self) { type in
+                            Text(type.displayName).tag(type)
+                        }
+                    }
+                }
+
+                Section("Items") {
+                    if meal.items.isEmpty {
+                        Text("No items")
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    } else {
+                        ForEach(visibleItems) { item in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: Theme.Spacing.xs) {
+                                        Text(item.name)
+                                            .font(Theme.Typography.subheadline)
+                                        if let grade = item.nutriScoreGrade, !grade.isEmpty {
+                                            NutriScoreBadge(grade: grade)
+                                        }
+                                    }
+                                    Text("\(item.calories) cal")
+                                        .font(Theme.Typography.caption)
+                                        .foregroundColor(Theme.Colors.textSecondary)
+                                }
+                                Spacer()
+                                TextField("g", text: Binding(
+                                    get: { itemGrams[item.id] ?? "" },
+                                    set: { itemGrams[item.id] = $0 }
+                                ))
+                                .keyboardType(.decimalPad)
+                                .multilineTextAlignment(.trailing)
+                                .frame(width: 70)
+                                Text("g")
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                            }
+                        }
+                        .onDelete(perform: deleteItems)
+                    }
+                }
+
+                if let errorMessage {
+                    Text(errorMessage)
+                        .foregroundColor(Theme.Colors.error)
+                }
+            }
+            .navigationTitle("Edit Meal")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") { saveChanges() }
+                        .disabled(isSaving)
+                }
+            }
+        }
+    }
+
+    private var visibleItems: [FoodItem] {
+        meal.items.filter { !deletedItemIDs.contains($0.id) }
+    }
+
+    private func deleteItems(at offsets: IndexSet) {
+        let items = visibleItems
+        for index in offsets {
+            let item = items[index]
+            deletedItemIDs.insert(item.id)
+            itemGrams[item.id] = nil
+        }
+    }
+
+    private func saveChanges() {
+        if isSaving { return }
+        let trimmed = mealName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            errorMessage = "Meal name is required."
+            return
+        }
+
+        errorMessage = nil
+        isSaving = true
+
+        let updatedItems: [(FoodItem, FoodItemUpdateRequestDTO)] = visibleItems.compactMap { item in
+            guard let gramsString = itemGrams[item.id],
+                  let newGrams = Double(gramsString),
+                  newGrams > 0 else { return nil }
+
+            if item.grams == 0 || newGrams == item.grams {
+                return nil
+            }
+
+            let factor = newGrams / item.grams
+            let updatedCalories = Int(round(Double(item.calories) * factor))
+            return (item, FoodItemUpdateRequestDTO(
+                name: nil,
+                grams: newGrams,
+                calories: updatedCalories,
+                proteinG: item.proteinG * factor,
+                carbsG: item.carbsG * factor,
+                fatG: item.fatG * factor,
+                fiberG: item.fiberG.map { $0 * factor },
+                sodiumMg: item.sodiumMg.map { $0 * factor },
+                sugarG: item.sugarG.map { $0 * factor },
+                saturatedFatG: item.saturatedFatG.map { $0 * factor },
+                servingSize: item.servingSize,
+                servingUnit: item.servingUnit,
+                servings: item.servings,
+                barcode: item.barcode,
+                offProductId: item.offProductId,
+                nutriScoreGrade: item.nutriScoreGrade,
+                confidence: item.confidence,
+                portionDescription: item.portionDescription
+            ))
+        }
+
+        let hasMealUpdate = trimmed != meal.name || mealType != meal.mealType
+        let mealUpdate = MealUpdateRequestDTO(
+            name: trimmed != meal.name ? trimmed : nil,
+            mealType: mealType != meal.mealType ? mealType : nil,
+            timestamp: nil,
+            notes: nil,
+            photoUrl: nil
+        )
+
+        Task {
+            do {
+                var latestResponse: MealResponseDTO?
+
+                for itemId in deletedItemIDs {
+                    latestResponse = try await APIService.shared.deleteFoodItem(mealId: meal.id, itemId: itemId)
+                }
+
+                for (item, request) in updatedItems {
+                    latestResponse = try await APIService.shared.updateFoodItem(
+                        mealId: meal.id,
+                        itemId: item.id,
+                        request: request
+                    )
+                }
+
+                if hasMealUpdate {
+                    latestResponse = try await APIService.shared.updateMeal(id: meal.id, request: mealUpdate)
+                }
+
+                await MainActor.run {
+                    if let response = latestResponse {
+                        upsertMeal(response, modelContext: modelContext)
+                        try? modelContext.save()
+                    }
+                    isSaving = false
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                    errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
 }
 
 struct FoodPhotoView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var userProfiles: [UserProfile]
     @Environment(\.dismiss) private var dismiss
 
     @State private var selectedItem: PhotosPickerItem?
+    @State private var cameraImage: UIImage?
+    @State private var showingCameraPicker = false
     @State private var imageData: Data?
     @State private var analysis: VisionAnalyzeResponse?
     @State private var isAnalyzing = false
     @State private var errorMessage: String?
+    @State private var isSaving = false
     @State private var mealType: MealType = .other
+    private var isCameraAvailable: Bool { UIImagePickerController.isSourceTypeAvailable(.camera) }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: Theme.Spacing.md) {
-                    PhotosPicker(selection: $selectedItem, matching: .images) {
+                    Button {
+                        showingCameraPicker = true
+                    } label: {
                         VStack(spacing: Theme.Spacing.sm) {
                             Image(systemName: "camera.fill")
                                 .font(.system(size: 40))
                                 .foregroundColor(Theme.Colors.accent)
-                            Text(imageData == nil ? "Choose Photo" : "Choose Different Photo")
+                            Text("Take Photo")
+                                .font(Theme.Typography.headline)
+                                .foregroundColor(Theme.Colors.textPrimary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(Theme.Spacing.lg)
+                        .cardStyle()
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!isCameraAvailable)
+
+                    PhotosPicker(selection: $selectedItem, matching: .images) {
+                        VStack(spacing: Theme.Spacing.sm) {
+                            Image(systemName: "photo.on.rectangle.angled")
+                                .font(.system(size: 40))
+                                .foregroundColor(Theme.Colors.accent)
+                            Text(imageData == nil ? "Choose from Library" : "Choose Different Photo")
                                 .font(Theme.Typography.headline)
                                 .foregroundColor(Theme.Colors.textPrimary)
                         }
@@ -800,6 +1342,13 @@ struct FoodPhotoView: View {
                 guard let newItem else { return }
                 loadPhoto(from: newItem)
             }
+            .onChange(of: cameraImage) { _, newImage in
+                guard let newImage else { return }
+                loadPhoto(from: newImage)
+            }
+            .sheet(isPresented: $showingCameraPicker) {
+                CameraImagePicker(image: $cameraImage)
+            }
         }
     }
 
@@ -815,7 +1364,7 @@ struct FoodPhotoView: View {
                 .foregroundColor(Theme.Colors.textSecondary)
 
             HStack(spacing: Theme.Spacing.md) {
-                nutritionChip(label: "Calories", value: "\(analysis.totals.calories)")
+                nutritionChip(label: "Calories", value: "\(Int(round(analysis.totals.calories)))")
                 nutritionChip(label: "Protein", value: String(format: "%.0fg", analysis.totals.proteinG))
                 nutritionChip(label: "Carbs", value: String(format: "%.0fg", analysis.totals.carbsG))
                 nutritionChip(label: "Fat", value: String(format: "%.0fg", analysis.totals.fatG))
@@ -838,7 +1387,7 @@ struct FoodPhotoView: View {
                                 .font(Theme.Typography.subheadline)
                                 .foregroundColor(Theme.Colors.textPrimary)
                             Spacer()
-                            Text("\(item.calories) cal")
+                            Text("\(Int(round(item.calories))) cal")
                                 .font(Theme.Typography.caption)
                                 .foregroundColor(Theme.Colors.textSecondary)
                         }
@@ -850,6 +1399,7 @@ struct FoodPhotoView: View {
                 addAnalysisToMeals(analysis)
             }
             .buttonStyle(.primary)
+            .disabled(isSaving)
         }
         .padding(Theme.Spacing.md)
         .cardStyle(elevated: true)
@@ -876,67 +1426,215 @@ struct FoodPhotoView: View {
         isAnalyzing = true
 
         Task {
-            defer { isAnalyzing = false }
             do {
-                imageData = try await item.loadTransferable(type: Data.self)
-                guard let imageData else {
-                    errorMessage = "Could not load the selected photo."
+                if let data = try await item.loadTransferable(type: Data.self) {
+                    await analyzeImageData(data)
                     return
                 }
-                analysis = try await APIService.shared.analyzeFood(imageBase64: imageData.base64EncodedString())
             } catch {
-                errorMessage = error.localizedDescription
+                // fall through to try other representations
+            }
+
+            if let data = await loadPhotoAssetData(from: item) {
+                await analyzeImageData(data)
+                return
+            }
+
+            await MainActor.run {
+                errorMessage = "Could not read that photo. If it is in iCloud, open it in Photos to download first."
+                isAnalyzing = false
             }
         }
     }
 
-    private func addAnalysisToMeals(_ analysis: VisionAnalyzeResponse) {
-        let profile = getOrCreateProfile()
-        let mealName = analysis.description.isEmpty ? "Photo Meal" : analysis.description
+    private func loadPhoto(from image: UIImage) {
+        Task {
+            await analyzeImageData(from: image)
+        }
+    }
 
-        let meal = Meal(
-            userId: profile.id,
+    private func analyzeImageData(from image: UIImage) async {
+        guard let data = image.jpegData(compressionQuality: 0.9) else {
+            await MainActor.run {
+                errorMessage = "Could not process the photo."
+                isAnalyzing = false
+            }
+            return
+        }
+        await analyzeImageData(data)
+    }
+
+    private func analyzeImageData(_ data: Data) async {
+        await MainActor.run {
+            errorMessage = nil
+            analysis = nil
+            isAnalyzing = true
+        }
+        do {
+            let analysisResult = try await APIService.shared.analyzeFood(imageBase64: data.base64EncodedString())
+            await MainActor.run {
+                imageData = data
+                analysis = analysisResult
+                isAnalyzing = false
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = friendlyPhotoError(error)
+                isAnalyzing = false
+            }
+        }
+    }
+
+    private func loadPhotoAssetData(from item: PhotosPickerItem) async -> Data? {
+        guard let identifier = item.itemIdentifier else { return nil }
+        let assets = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
+        guard let asset = assets.firstObject else { return nil }
+
+        return await withCheckedContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.isNetworkAccessAllowed = true
+            options.deliveryMode = .highQualityFormat
+            options.isSynchronous = false
+
+            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
+                continuation.resume(returning: data)
+            }
+        }
+    }
+
+    private func friendlyPhotoError(_ error: Error) -> String {
+        let nsError = error as NSError
+        if nsError.domain == NSCocoaErrorDomain {
+            return "Could not read that photo. Try a different image."
+        }
+        return error.localizedDescription
+    }
+
+    private func addAnalysisToMeals(_ analysis: VisionAnalyzeResponse) {
+        let mealName = analysis.description.isEmpty ? "Photo Meal" : analysis.description
+        let items: [FoodItem] = analysis.items.isEmpty
+            ? [
+                FoodItem(
+                    name: mealName,
+                    source: .vision,
+                    grams: 0,
+                    calories: Int(round(analysis.totals.calories)),
+                    proteinG: analysis.totals.proteinG,
+                    carbsG: analysis.totals.carbsG,
+                    fatG: analysis.totals.fatG,
+                    confidence: analysis.confidence,
+                    portionDescription: analysis.description
+                )
+            ]
+            : analysis.items.map { $0.toFoodItem() }
+
+        let request = MealCreateRequestDTO(
             name: mealName,
             mealType: mealType,
-            timestamp: Date()
+            timestamp: Date(),
+            notes: nil,
+            photoUrl: nil,
+            items: items.map { foodItemRequest(from: $0) },
+            localId: nil
         )
 
-        for visionItem in analysis.items {
-            let item = visionItem.toFoodItem()
-            item.meal = meal
-            meal.addItem(item)
-            modelContext.insert(item)
+        errorMessage = nil
+        isSaving = true
+        Task {
+            do {
+                let response = try await APIService.shared.createMeal(request: request)
+                await MainActor.run {
+                    upsertMeal(response, modelContext: modelContext)
+                    try? modelContext.save()
+                    isSaving = false
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                    errorMessage = error.localizedDescription
+                }
+            }
         }
-
-        if analysis.items.isEmpty {
-            let fallback = FoodItem(
-                name: mealName,
-                source: .vision,
-                grams: 0,
-                calories: analysis.totals.calories,
-                proteinG: analysis.totals.proteinG,
-                carbsG: analysis.totals.carbsG,
-                fatG: analysis.totals.fatG,
-                confidence: analysis.confidence,
-                portionDescription: analysis.description
-            )
-            fallback.meal = meal
-            meal.addItem(fallback)
-            modelContext.insert(fallback)
-        }
-
-        modelContext.insert(meal)
-        dismiss()
     }
 
-    private func getOrCreateProfile() -> UserProfile {
-        if let profile = userProfiles.first {
-            return profile
-        }
-        let profile = UserProfile(email: "user@example.com")
-        modelContext.insert(profile)
-        return profile
+}
+
+private func upsertMeal(_ response: MealResponseDTO, modelContext: ModelContext) {
+    let responseId = response.id
+    let existingDescriptor = FetchDescriptor<Meal>(
+        predicate: #Predicate<Meal> { $0.id == responseId }
+    )
+    if let existing = try? modelContext.fetch(existingDescriptor).first {
+        modelContext.delete(existing)
     }
+
+    let meal = Meal(
+        id: response.id,
+        userId: response.userId,
+        name: response.name,
+        mealType: response.mealType,
+        timestamp: response.timestamp,
+        notes: response.notes
+    )
+
+    for item in response.items {
+        let food = FoodItem(
+            id: item.id,
+            name: item.name,
+            source: item.source,
+            grams: item.grams,
+            calories: item.calories,
+            proteinG: item.proteinG,
+            carbsG: item.carbsG,
+            fatG: item.fatG,
+            fiberG: item.fiberG,
+            servingSize: item.servingSize,
+            servingUnit: item.servingUnit,
+            servings: item.servings,
+            barcode: item.barcode,
+            nutriScoreGrade: item.nutriScoreGrade,
+            confidence: item.confidence,
+            portionDescription: item.portionDescription
+        )
+        food.sodiumMg = item.sodiumMg
+        food.sugarG = item.sugarG
+        food.saturatedFatG = item.saturatedFatG
+        food.createdAt = item.createdAt
+        meal.items.append(food)
+    }
+
+    meal.totalCalories = response.totalCalories
+    meal.totalProteinG = response.totalProteinG
+    meal.totalCarbsG = response.totalCarbsG
+    meal.totalFatG = response.totalFatG
+    meal.totalFiberG = response.totalFiberG
+    meal.isSynced = true
+    meal.createdAt = response.createdAt
+    meal.updatedAt = response.updatedAt
+
+    modelContext.insert(meal)
+}
+
+private func foodItemRequest(from item: FoodItem) -> FoodItemCreateRequestDTO {
+    FoodItemCreateRequestDTO(
+        name: item.name,
+        grams: item.grams,
+        calories: item.calories,
+        proteinG: item.proteinG,
+        carbsG: item.carbsG,
+        fatG: item.fatG,
+        fiberG: item.fiberG,
+        source: item.source,
+        servingSize: item.servingSize,
+        servingUnit: item.servingUnit,
+        servings: item.servings,
+        barcode: item.barcode,
+        offProductId: item.offProductId,
+        nutriScoreGrade: item.nutriScoreGrade,
+        confidence: item.confidence,
+        portionDescription: item.portionDescription
+    )
 }
 
 // MARK: - Barcode Scanner Preview

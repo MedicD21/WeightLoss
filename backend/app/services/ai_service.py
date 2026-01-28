@@ -115,6 +115,69 @@ ASSISTANT_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "add_workout_plan",
+            "description": "Create a workout plan or routine. Use this when the user asks for a plan or schedule.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Name of the plan (e.g., 'Push/Pull/Legs', 'Beginner Full Body')"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Optional plan description"
+                    },
+                    "workout_type": {
+                        "type": "string",
+                        "enum": ["strength", "cardio", "hiit", "flexibility", "walking", "running", "cycling", "swimming", "sports", "other"],
+                        "description": "Primary type for the plan"
+                    },
+                    "scheduled_days": {
+                        "type": "array",
+                        "items": {"type": "integer", "minimum": 0, "maximum": 6},
+                        "description": "Optional scheduled days (0=Mon ... 6=Sun)"
+                    },
+                    "estimated_duration_min": {
+                        "type": "integer",
+                        "description": "Estimated duration in minutes"
+                    },
+                    "is_active": {
+                        "type": "boolean",
+                        "description": "Whether the plan should be active"
+                    },
+                    "exercises": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "muscle_group": {
+                                    "type": "string",
+                                    "enum": ["chest", "back", "shoulders", "biceps", "triceps", "forearms", "core", "quads", "hamstrings", "glutes", "calves", "full_body", "cardio"]
+                                },
+                                "equipment": {"type": "string"},
+                                "notes": {"type": "string"},
+                                "sets": {"type": "integer"},
+                                "reps_min": {"type": "integer"},
+                                "reps_max": {"type": "integer"},
+                                "duration_sec": {"type": "integer"},
+                                "rest_sec": {"type": "integer"},
+                                "superset_group": {"type": "integer"},
+                                "order_index": {"type": "integer"}
+                            },
+                            "required": ["name"]
+                        },
+                        "description": "Optional list of exercises in the plan"
+                    }
+                },
+                "required": ["name", "workout_type"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "add_water",
             "description": "Log water intake. Use when user mentions drinking water.",
             "parameters": {
@@ -191,6 +254,24 @@ ASSISTANT_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "set_custom_macros",
+            "description": "Set custom macro targets when the user provides exact calorie/macro goals.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "calories": {"type": "integer", "description": "Daily calorie target"},
+                    "protein_g": {"type": "number", "description": "Protein target in grams"},
+                    "carbs_g": {"type": "number", "description": "Carbs target in grams"},
+                    "fat_g": {"type": "number", "description": "Fat target in grams"},
+                    "fiber_g": {"type": "number", "description": "Optional fiber target in grams"}
+                },
+                "required": ["calories", "protein_g", "carbs_g", "fat_g"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_food",
             "description": "Search for food nutrition information by name or barcode.",
             "parameters": {
@@ -234,10 +315,12 @@ Key behaviors:
 3. When users mention exercise, use the add_workout tool.
 4. When users mention drinking water, use the add_water tool. A glass is ~250ml, a bottle ~500ml.
 5. When users mention their weight, use the add_weight tool.
-6. If asked about nutrition for a food, use search_food to look it up.
-7. Provide encouragement but be realistic about health and fitness.
-8. If you're unsure about exact nutritional values, make reasonable estimates based on typical values and mention they are estimates.
-9. Convert units as needed (user may say lbs for weight, cups for water, etc.)
+6. When users ask for a workout plan or routine, use the add_workout_plan tool.
+7. If users explicitly provide macro targets (calories/protein/carbs/fat), use set_custom_macros.
+8. If asked about nutrition for a food, use search_food to look it up.
+9. Provide encouragement but be realistic about health and fitness.
+10. If you're unsure about exact nutritional values, make reasonable estimates based on typical values and mention they are estimates.
+11. Convert units as needed (user may say lbs for weight, cups for water, etc.)
 
 Common food estimates (per typical serving):
 - Eggs: 1 large = 72 cal, 6g protein, 0.5g carbs, 5g fat

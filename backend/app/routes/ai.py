@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.base import get_db
 from app.models.user import UserProfile, MacroTargets
 from app.models.nutrition import Meal, FoodItem, FoodSource, MealType
-from app.models.workout import WorkoutLog, WorkoutType, LogSource
+from app.models.workout import WorkoutLog, WorkoutType, LogSource, WorkoutPlan, WorkoutExercise, MuscleGroup
 from app.models.tracking import BodyWeightEntry, WaterEntry
 from app.models.chat import ChatMessage, MessageRole, VisionAnalysis
 from app.schemas.chat import (
@@ -167,6 +167,9 @@ async def _execute_tool(
         elif tool_call.name == "add_workout":
             return await _add_workout(db, user, tool_call.arguments, tool_call.id)
 
+        elif tool_call.name == "add_workout_plan":
+            return await _add_workout_plan(db, user, tool_call.arguments, tool_call.id)
+
         elif tool_call.name == "add_water":
             return await _add_water(db, user, tool_call.arguments, tool_call.id)
 
@@ -175,6 +178,9 @@ async def _execute_tool(
 
         elif tool_call.name == "set_goal":
             return await _set_goal(db, user, tool_call.arguments, tool_call.id)
+
+        elif tool_call.name == "set_custom_macros":
+            return await _set_custom_macros(db, user, tool_call.arguments, tool_call.id)
 
         elif tool_call.name == "search_food":
             return await _search_food(db, user, tool_call.arguments, tool_call.id)
@@ -273,6 +279,71 @@ async def _add_workout(
             "workout_id": str(log.id),
             "name": log.name,
             "duration_min": log.duration_min,
+        },
+        success=True,
+    )
+
+
+async def _add_workout_plan(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
+    """Add a workout plan via tool call."""
+    workout_type_value = args.get("workout_type", "other")
+    try:
+        workout_type = WorkoutType(workout_type_value)
+    except ValueError:
+        workout_type = WorkoutType.OTHER
+
+    plan = WorkoutPlan(
+        user_id=user.id,
+        name=args["name"],
+        description=args.get("description"),
+        workout_type=workout_type,
+        scheduled_days=args.get("scheduled_days"),
+        estimated_duration_min=args.get("estimated_duration_min"),
+        is_active=args.get("is_active", True),
+    )
+
+    for i, ex_data in enumerate(args.get("exercises", [])):
+        muscle_group = None
+        if ex_data.get("muscle_group"):
+            try:
+                muscle_group = MuscleGroup(ex_data["muscle_group"])
+            except ValueError:
+                muscle_group = None
+
+        exercise = WorkoutExercise(
+            name=ex_data["name"],
+            muscle_group=muscle_group,
+            equipment=ex_data.get("equipment"),
+            notes=ex_data.get("notes"),
+            sets=ex_data.get("sets", 3),
+            reps_min=ex_data.get("reps_min"),
+            reps_max=ex_data.get("reps_max"),
+            duration_sec=ex_data.get("duration_sec"),
+            rest_sec=ex_data.get("rest_sec", 60),
+            superset_group=ex_data.get("superset_group"),
+            order_index=ex_data.get("order_index", i),
+        )
+        plan.exercises.append(exercise)
+
+    db.add(plan)
+    await db.flush()
+
+    return ToolResult(
+        tool_call_id=tool_call_id,
+        result={
+            "plan_id": str(plan.id),
+            "name": plan.name,
+            "workout_type": plan.workout_type.value,
+            "exercise_count": len(plan.exercises),
+            "scheduled_days": plan.scheduled_days,
+            "estimated_duration_min": plan.estimated_duration_min,
+            "description": plan.description,
+            "is_active": plan.is_active,
         },
         success=True,
     )
@@ -403,6 +474,55 @@ async def _set_goal(
         result={
             "goal_type": user.goal_type.value,
             "activity_level": user.activity_level.value,
+        },
+        success=True,
+    )
+
+
+async def _set_custom_macros(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
+    """Set custom macro targets via tool call."""
+    targets_result = await db.execute(
+        select(MacroTargets).where(MacroTargets.user_id == user.id)
+    )
+    targets = targets_result.scalar_one_or_none()
+
+    if targets:
+        targets.calories = args["calories"]
+        targets.protein_g = args["protein_g"]
+        targets.carbs_g = args["carbs_g"]
+        targets.fat_g = args["fat_g"]
+        targets.fiber_g = args.get("fiber_g")
+        targets.bmr = None
+        targets.tdee = None
+        targets.calculated_at = datetime.utcnow()
+    else:
+        targets = MacroTargets(
+            user_id=user.id,
+            calories=args["calories"],
+            protein_g=args["protein_g"],
+            carbs_g=args["carbs_g"],
+            fat_g=args["fat_g"],
+            fiber_g=args.get("fiber_g"),
+            bmr=None,
+            tdee=None,
+        )
+        db.add(targets)
+
+    await db.flush()
+
+    return ToolResult(
+        tool_call_id=tool_call_id,
+        result={
+            "calories": targets.calories,
+            "protein_g": targets.protein_g,
+            "carbs_g": targets.carbs_g,
+            "fat_g": targets.fat_g,
+            "fiber_g": targets.fiber_g,
         },
         success=True,
     )

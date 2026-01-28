@@ -1,6 +1,19 @@
 import Foundation
 import Combine
 
+private enum DateParsers {
+    static let iso8601WithFraction: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    static let iso8601NoFraction: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+}
+
 /// API service for backend communication
 @MainActor
 final class APIService: ObservableObject {
@@ -11,7 +24,6 @@ final class APIService: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     @Published var isLoading = false
-
     private init() {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = Constants.API.timeout
@@ -19,15 +31,51 @@ final class APIService: ObservableObject {
         session = URLSession(configuration: config)
     }
 
+    private func makeDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let dateString = try container.decode(String.self)
+            if let date = DateParsers.iso8601WithFraction.date(from: dateString) {
+                return date
+            }
+            if let date = DateParsers.iso8601NoFraction.date(from: dateString) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Invalid date format: \(dateString)"
+            )
+        }
+        return decoder
+    }
+
+    private func makeEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            let dateString = DateParsers.iso8601WithFraction.string(from: date)
+            try container.encode(dateString)
+        }
+        return encoder
+    }
+
     // MARK: - Generic Request
 
     func request<T: Decodable>(
         endpoint: String,
         method: HTTPMethod = .GET,
+        queryItems: [URLQueryItem]? = nil,
         body: Encodable? = nil,
         requiresAuth: Bool = true
     ) async throws -> T {
-        let url = baseURL.appendingPathComponent(endpoint)
+        var components = URLComponents(url: baseURL.appendingPathComponent(endpoint), resolvingAgainstBaseURL: false)
+        components?.queryItems = queryItems
+        guard let url = components?.url else {
+            throw APIError.invalidResponse
+        }
         var request = URLRequest(url: url)
         request.httpMethod = method.rawValue
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -39,9 +87,7 @@ final class APIService: ObservableObject {
 
         // Add body if present
         if let body = body {
-            let encoder = JSONEncoder()
-            encoder.keyEncodingStrategy = .convertToSnakeCase
-            request.httpBody = try encoder.encode(body)
+            request.httpBody = try makeEncoder().encode(body)
         }
 
         let (data, response) = try await session.data(for: request)
@@ -56,7 +102,13 @@ final class APIService: ObservableObject {
             if requiresAuth, let _ = KeychainService.shared.getRefreshToken() {
                 try await refreshToken()
                 // Retry the request
-                return try await self.request(endpoint: endpoint, method: method, body: body, requiresAuth: requiresAuth)
+                return try await self.request(
+                    endpoint: endpoint,
+                    method: method,
+                    queryItems: queryItems,
+                    body: body,
+                    requiresAuth: requiresAuth
+                )
             }
             throw APIError.unauthorized
         }
@@ -65,11 +117,56 @@ final class APIService: ObservableObject {
             throw APIError.httpError(statusCode: httpResponse.statusCode, data: data)
         }
 
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        decoder.dateDecodingStrategy = .iso8601
+        return try makeDecoder().decode(T.self, from: data)
+    }
 
-        return try decoder.decode(T.self, from: data)
+    func requestVoid(
+        endpoint: String,
+        method: HTTPMethod = .GET,
+        queryItems: [URLQueryItem]? = nil,
+        body: Encodable? = nil,
+        requiresAuth: Bool = true
+    ) async throws {
+        var components = URLComponents(url: baseURL.appendingPathComponent(endpoint), resolvingAgainstBaseURL: false)
+        components?.queryItems = queryItems
+        guard let url = components?.url else {
+            throw APIError.invalidResponse
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = method.rawValue
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if requiresAuth, let token = KeychainService.shared.getToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        if let body = body {
+            request.httpBody = try makeEncoder().encode(body)
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        if httpResponse.statusCode == 401 {
+            if requiresAuth, let _ = KeychainService.shared.getRefreshToken() {
+                try await refreshToken()
+                return try await self.requestVoid(
+                    endpoint: endpoint,
+                    method: method,
+                    queryItems: queryItems,
+                    body: body,
+                    requiresAuth: requiresAuth
+                )
+            }
+            throw APIError.unauthorized
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.httpError(statusCode: httpResponse.statusCode, data: data)
+        }
     }
 
     // MARK: - Upload
@@ -115,9 +212,7 @@ final class APIService: ObservableObject {
             throw APIError.invalidResponse
         }
 
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return try decoder.decode(VisionAnalyzeResponse.self, from: data)
+        return try makeDecoder().decode(VisionAnalyzeResponse.self, from: data)
     }
 
     // MARK: - Auth
@@ -196,6 +291,66 @@ final class APIService: ObservableObject {
             body: Request(imageBase64: imageBase64, prompt: prompt)
         )
     }
+
+    // MARK: - Meals
+
+    func createMeal(request mealRequest: MealCreateRequestDTO) async throws -> MealResponseDTO {
+        try await request(endpoint: "nutrition/meals", method: .POST, body: mealRequest)
+    }
+
+    func updateMeal(id: UUID, request mealUpdate: MealUpdateRequestDTO) async throws -> MealResponseDTO {
+        try await request(endpoint: "nutrition/meals/\(id.uuidString)", method: .PUT, body: mealUpdate)
+    }
+
+    func deleteMeal(id: UUID) async throws {
+        try await requestVoid(endpoint: "nutrition/meals/\(id.uuidString)", method: .DELETE)
+    }
+
+    func listMealSummaries(startDate: Date, endDate: Date) async throws -> [MealSummaryDTO] {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let start = formatter.string(from: startDate)
+        let end = formatter.string(from: endDate)
+        return try await request(
+            endpoint: "nutrition/meals",
+            method: .GET,
+            queryItems: [
+                URLQueryItem(name: "start_date", value: start),
+                URLQueryItem(name: "end_date", value: end),
+                URLQueryItem(name: "limit", value: "100")
+            ]
+        )
+    }
+
+    // MARK: - Sync Helpers
+
+    func fetchMeal(id: UUID) async throws -> MealResponseDTO {
+        try await request(endpoint: "nutrition/meals/\(id.uuidString)")
+    }
+
+    func updateFoodItem(mealId: UUID, itemId: UUID, request itemUpdate: FoodItemUpdateRequestDTO) async throws -> MealResponseDTO {
+        try await request(
+            endpoint: "nutrition/meals/\(mealId.uuidString)/items/\(itemId.uuidString)",
+            method: .PUT,
+            body: itemUpdate
+        )
+    }
+
+    func deleteFoodItem(mealId: UUID, itemId: UUID) async throws -> MealResponseDTO {
+        try await request(endpoint: "nutrition/meals/\(mealId.uuidString)/items/\(itemId.uuidString)", method: .DELETE)
+    }
+
+    func fetchWorkoutLog(id: UUID) async throws -> WorkoutLogResponseDTO {
+        try await request(endpoint: "workouts/logs/\(id.uuidString)")
+    }
+
+    func fetchWorkoutPlan(id: UUID) async throws -> WorkoutPlanResponseDTO {
+        try await request(endpoint: "workouts/plans/\(id.uuidString)")
+    }
+
+    func fetchMacroTargets() async throws -> MacroTargetsResponseDTO? {
+        try await request(endpoint: "user/targets")
+    }
 }
 
 // MARK: - HTTP Methods
@@ -246,4 +401,198 @@ struct TokenResponse: Decodable {
     let tokenType: String
     let expiresIn: Int
     let userId: String
+}
+
+struct FoodItemResponseDTO: Decodable {
+    let id: UUID
+    let mealId: UUID
+    let name: String
+    let source: FoodSource
+    let grams: Double
+    let calories: Int
+    let proteinG: Double
+    let carbsG: Double
+    let fatG: Double
+    let fiberG: Double?
+    let sodiumMg: Double?
+    let sugarG: Double?
+    let saturatedFatG: Double?
+    let servingSize: Double?
+    let servingUnit: String?
+    let servings: Double
+    let barcode: String?
+    let nutriScoreGrade: String?
+    let confidence: Double?
+    let portionDescription: String?
+    let createdAt: Date
+}
+
+struct MealResponseDTO: Decodable {
+    let id: UUID
+    let userId: UUID
+    let name: String
+    let mealType: MealType
+    let timestamp: Date
+    let notes: String?
+    let totalCalories: Int
+    let totalProteinG: Double
+    let totalCarbsG: Double
+    let totalFatG: Double
+    let totalFiberG: Double?
+    let items: [FoodItemResponseDTO]
+    let createdAt: Date
+    let updatedAt: Date
+}
+
+struct MealSummaryDTO: Decodable {
+    let id: UUID
+    let name: String
+    let mealType: MealType
+    let timestamp: Date
+    let totalCalories: Int
+    let totalProteinG: Double
+    let itemsCount: Int
+}
+
+struct FoodItemCreateRequestDTO: Encodable {
+    let name: String
+    let grams: Double
+    let calories: Int
+    let proteinG: Double
+    let carbsG: Double
+    let fatG: Double
+    let fiberG: Double?
+    let source: FoodSource?
+    let servingSize: Double?
+    let servingUnit: String?
+    let servings: Double?
+    let barcode: String?
+    let offProductId: String?
+    let nutriScoreGrade: String?
+    let confidence: Double?
+    let portionDescription: String?
+}
+
+struct MealCreateRequestDTO: Encodable {
+    let name: String
+    let mealType: MealType
+    let timestamp: Date
+    let notes: String?
+    let photoUrl: String?
+    let items: [FoodItemCreateRequestDTO]
+    let localId: String?
+}
+
+struct MealUpdateRequestDTO: Encodable {
+    let name: String?
+    let mealType: MealType?
+    let timestamp: Date?
+    let notes: String?
+    let photoUrl: String?
+}
+
+struct FoodItemUpdateRequestDTO: Encodable {
+    let name: String?
+    let grams: Double?
+    let calories: Int?
+    let proteinG: Double?
+    let carbsG: Double?
+    let fatG: Double?
+    let fiberG: Double?
+    let sodiumMg: Double?
+    let sugarG: Double?
+    let saturatedFatG: Double?
+    let servingSize: Double?
+    let servingUnit: String?
+    let servings: Double?
+    let barcode: String?
+    let offProductId: String?
+    let nutriScoreGrade: String?
+    let confidence: Double?
+    let portionDescription: String?
+}
+
+struct WorkoutSetLogResponseDTO: Decodable {
+    let id: UUID
+    let logId: UUID
+    let exerciseName: String
+    let setNumber: Int
+    let reps: Int?
+    let weightKg: Double?
+    let durationSec: Int?
+    let distanceM: Double?
+    let completed: Bool
+    let isWarmup: Bool
+    let isDropset: Bool
+    let rpe: Int?
+    let orderIndex: Int
+    let notes: String?
+    let createdAt: Date
+}
+
+struct WorkoutLogResponseDTO: Decodable {
+    let id: UUID
+    let userId: UUID
+    let planId: UUID?
+    let name: String
+    let workoutType: WorkoutType
+    let startTime: Date
+    let endTime: Date?
+    let durationMin: Int
+    let caloriesBurned: Int?
+    let avgHeartRate: Int?
+    let maxHeartRate: Int?
+    let distanceKm: Double?
+    let notes: String?
+    let rating: Int?
+    let source: LogSource
+    let healthKitId: String?
+    let sets: [WorkoutSetLogResponseDTO]
+    let createdAt: Date
+    let updatedAt: Date
+}
+
+struct WorkoutExerciseResponseDTO: Decodable {
+    let id: UUID
+    let planId: UUID
+    let name: String
+    let muscleGroup: MuscleGroup?
+    let equipment: String?
+    let notes: String?
+    let sets: Int
+    let repsMin: Int?
+    let repsMax: Int?
+    let durationSec: Int?
+    let restSec: Int
+    let supersetGroup: Int?
+    let orderIndex: Int
+    let createdAt: Date
+}
+
+struct WorkoutPlanResponseDTO: Decodable {
+    let id: UUID
+    let userId: UUID
+    let name: String
+    let description: String?
+    let workoutType: WorkoutType
+    let scheduledDays: [Int]?
+    let estimatedDurationMin: Int?
+    let isActive: Bool
+    let orderIndex: Int
+    let exercises: [WorkoutExerciseResponseDTO]
+    let createdAt: Date
+    let updatedAt: Date
+}
+
+struct MacroTargetsResponseDTO: Decodable {
+    let id: UUID
+    let userId: UUID
+    let calories: Int
+    let proteinG: Double
+    let carbsG: Double
+    let fatG: Double
+    let fiberG: Double?
+    let bmr: Int?
+    let tdee: Int?
+    let calculatedAt: Date
 }
