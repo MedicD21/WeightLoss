@@ -1,5 +1,16 @@
 # Logged Fitness Tracker API
 
+## Docker (Production)
+
+Use the production compose file for a non-reload setup:
+```
+docker compose -f docker-compose.prod.yml up --build -d
+```
+
+Notes:
+- Create a `.env` based on `.env.example` before starting.
+- For database migrations, run: `python scripts/migrate.py` inside the api container.
+
 ## Migrations (Alembic)
 
 The schema is managed by Alembic. Use this workflow for changes:

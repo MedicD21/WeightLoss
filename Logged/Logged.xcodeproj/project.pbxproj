@@ -71,9 +71,22 @@
 		CBFD4F9B2F28149A00F0C448 /* LoggedWatch Watch AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "LoggedWatch Watch AppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		CBFCEC542F2999E000972764 /* Exceptions for "Logged" folder in "Logged" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = CBFD4F562F28140100F0C448 /* Logged */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		CBFD4F592F28140100F0C448 /* Logged */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				CBFCEC542F2999E000972764 /* Exceptions for "Logged" folder in "Logged" target */,
+			);
 			path = Logged;
 			sourceTree = "<group>";
 		};
@@ -627,6 +640,7 @@
 				DEVELOPMENT_TEAM = 286LKF859M;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Logged/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Logged;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow Logged to access the camera to capture food photos for nutrition analysis.";
@@ -669,6 +683,7 @@
 				DEVELOPMENT_TEAM = 286LKF859M;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Logged/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Logged;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow Logged to access the camera to capture food photos for nutrition analysis.";
