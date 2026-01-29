@@ -86,8 +86,8 @@ private struct OrbShape: View {
                 .blur(radius: 8)
         }
         .offset(
-            x: offset.x + 50 * sin(animationPhase * .pi * 2 + delay),
-            y: offset.y + 30 * cos(animationPhase * .pi * 2 + delay * 0.7)
+            x: offset.x + 50 * sin(animationPhase * CGFloat.pi * 2 + CGFloat(delay)),
+            y: offset.y + 30 * cos(animationPhase * CGFloat.pi * 2 + CGFloat(delay) * 0.7)
         )
     }
 }

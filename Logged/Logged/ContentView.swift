@@ -11,7 +11,7 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            Theme.Colors.background
+            AnimatedBackground()
                 .ignoresSafeArea()
 
             if appState.isAuthenticated {
