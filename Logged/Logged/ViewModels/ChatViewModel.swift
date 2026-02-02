@@ -8,8 +8,14 @@ final class ChatViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: Error?
     @Published var conversationId: String?
+    @Published var suggestions: [String] = []
 
     private let apiService = APIService.shared
+
+    init() {
+        // Set initial suggestions
+        updateSuggestions(for: nil)
+    }
 
     func sendMessage(_ text: String, modelContext: ModelContext) async {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -68,6 +74,8 @@ final class ChatViewModel: ObservableObject {
             // Handle created entries (meals, workouts, water, etc.)
             if let createdEntries = response.createdEntries {
                 await processCreatedEntries(createdEntries, profile: profile, modelContext: modelContext)
+                // Update suggestions based on what was created
+                updateSuggestions(for: createdEntries)
             }
             if let toolCalls = response.toolCalls {
                 await processToolCalls(toolCalls, profile: profile, modelContext: modelContext)
@@ -498,22 +506,25 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func fetchMeal(id: UUID, modelContext: ModelContext) -> Meal? {
+        let mealId = id
         let descriptor = FetchDescriptor<Meal>(
-            predicate: #Predicate<Meal> { $0.id == id }
+            predicate: #Predicate<Meal> { $0.id == mealId }
         )
         return try? modelContext.fetch(descriptor).first
     }
 
     private func fetchWorkoutLog(id: UUID, modelContext: ModelContext) -> WorkoutLog? {
+        let logId = id
         let descriptor = FetchDescriptor<WorkoutLog>(
-            predicate: #Predicate<WorkoutLog> { $0.id == id }
+            predicate: #Predicate<WorkoutLog> { $0.id == logId }
         )
         return try? modelContext.fetch(descriptor).first
     }
 
     private func fetchWorkoutPlan(id: UUID, modelContext: ModelContext) -> WorkoutPlan? {
+        let planId = id
         let descriptor = FetchDescriptor<WorkoutPlan>(
-            predicate: #Predicate<WorkoutPlan> { $0.id == id }
+            predicate: #Predicate<WorkoutPlan> { $0.id == planId }
         )
         return try? modelContext.fetch(descriptor).first
     }
@@ -564,6 +575,73 @@ final class ChatViewModel: ObservableObject {
         default:
             return nil
         }
+    }
+
+    private func updateSuggestions(for createdEntries: [[String: AnyCodable]]?) {
+        // Generate contextual suggestions based on what was just logged
+        var newSuggestions: [String] = []
+
+        if let entries = createdEntries {
+            for entry in entries {
+                guard let type = entry["type"]?.value as? String else { continue }
+
+                switch type {
+                case "add_meal":
+                    newSuggestions = [
+                        "Log my water intake",
+                        "Add a snack",
+                        "How many calories today?"
+                    ]
+                case "add_workout":
+                    newSuggestions = [
+                        "Log my weight",
+                        "Create a workout plan",
+                        "What's my weekly summary?"
+                    ]
+                case "add_workout_plan":
+                    newSuggestions = [
+                        "Show my workout plans",
+                        "Log today's workout",
+                        "Set a new fitness goal"
+                    ]
+                case "add_water":
+                    newSuggestions = [
+                        "Log a meal",
+                        "Add another glass of water",
+                        "Show my daily summary"
+                    ]
+                case "add_weight":
+                    newSuggestions = [
+                        "Log body fat percentage",
+                        "Show my progress",
+                        "Log a workout"
+                    ]
+                case "set_goal", "set_custom_macros":
+                    newSuggestions = [
+                        "Show my daily summary",
+                        "Log a meal",
+                        "What's my progress?"
+                    ]
+                default:
+                    break
+                }
+            }
+        }
+
+        // Default suggestions if no specific context
+        if newSuggestions.isEmpty {
+            let defaultSuggestions = [
+                "Log breakfast",
+                "Log my workout",
+                "Add water intake",
+                "Show daily summary",
+                "Create workout plan",
+                "Log my weight"
+            ]
+            newSuggestions = Array(defaultSuggestions.shuffled().prefix(3))
+        }
+
+        suggestions = newSuggestions
     }
 
     private static func stringValue(from value: Any?) -> String? {

@@ -62,9 +62,11 @@ async def chat_with_assistant(
             .limit(20)
         )
         messages = result.scalars().all()
+        # Only include user and assistant messages with non-empty content
         conversation_history = [
             {"role": m.role.value, "content": m.content}
             for m in messages
+            if m.role in (MessageRole.USER, MessageRole.ASSISTANT) and m.content and m.content.strip()
         ]
 
     # Build user context
@@ -148,10 +150,17 @@ async def chat_with_assistant(
 
     await db.flush()
 
-    response.tool_results = tool_results if tool_results else None
-    response.created_entries = created_entries if created_entries else None
-
-    return response
+    # Create new response with tool results and created entries
+    return ChatResponse(
+        message=response.message,
+        role=response.role,
+        tool_calls=response.tool_calls,
+        tool_results=tool_results if tool_results else None,
+        conversation_id=response.conversation_id,
+        model_used=response.model_used,
+        tokens_used=response.tokens_used,
+        created_entries=created_entries if created_entries else None,
+    )
 
 
 async def _execute_tool(
@@ -187,6 +196,39 @@ async def _execute_tool(
 
         elif tool_call.name == "get_daily_summary":
             return await _get_daily_summary(db, user, tool_call.arguments, tool_call.id)
+
+        elif tool_call.name == "save_favorite_food":
+            return await _save_favorite_food(db, user, tool_call.arguments, tool_call.id)
+
+        elif tool_call.name == "get_favorite_foods":
+            return await _get_favorite_foods(db, user, tool_call.arguments, tool_call.id)
+
+        elif tool_call.name == "update_meal":
+            return await _update_meal(db, user, tool_call.arguments, tool_call.id)
+
+        elif tool_call.name == "delete_meal":
+            return await _delete_meal(db, user, tool_call.arguments, tool_call.id)
+
+        elif tool_call.name == "update_workout":
+            return await _update_workout(db, user, tool_call.arguments, tool_call.id)
+
+        elif tool_call.name == "delete_workout":
+            return await _delete_workout(db, user, tool_call.arguments, tool_call.id)
+
+        elif tool_call.name == "update_workout_plan":
+            return await _update_workout_plan(db, user, tool_call.arguments, tool_call.id)
+
+        elif tool_call.name == "delete_workout_plan":
+            return await _delete_workout_plan(db, user, tool_call.arguments, tool_call.id)
+
+        elif tool_call.name == "get_weekly_summary":
+            return await _get_weekly_summary(db, user, tool_call.arguments, tool_call.id)
+
+        elif tool_call.name == "add_body_measurements":
+            return await _add_body_measurements(db, user, tool_call.arguments, tool_call.id)
+
+        elif tool_call.name == "update_profile":
+            return await _update_profile(db, user, tool_call.arguments, tool_call.id)
 
         else:
             return ToolResult(
@@ -619,6 +661,390 @@ async def _get_daily_summary(
             "meals_count": len(meals),
             "water_ml": water,
         },
+        success=True,
+    )
+
+
+async def _save_favorite_food(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
+    """Save a favorite food via tool call."""
+    from app.models.nutrition import SavedFood
+
+    food = SavedFood(
+        user_id=user.id,
+        name=args["name"],
+        brand=args.get("brand"),
+        source=FoodSource.MANUAL,
+        calories_per_100g=args["calories_per_100g"],
+        protein_per_100g=args["protein_per_100g"],
+        carbs_per_100g=args["carbs_per_100g"],
+        fat_per_100g=args["fat_per_100g"],
+        default_serving_g=args.get("default_serving_g", 100),
+    )
+    db.add(food)
+    await db.flush()
+
+    return ToolResult(
+        tool_call_id=tool_call_id,
+        result={
+            "food_id": str(food.id),
+            "name": food.name,
+            "message": f"Saved {food.name} to your favorites!"
+        },
+        success=True,
+    )
+
+
+async def _get_favorite_foods(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
+    """Get favorite foods via tool call."""
+    from app.models.nutrition import SavedFood
+
+    result = await db.execute(
+        select(SavedFood).where(SavedFood.user_id == user.id).order_by(SavedFood.name)
+    )
+    foods = result.scalars().all()
+
+    return ToolResult(
+        tool_call_id=tool_call_id,
+        result={
+            "foods": [
+                {
+                    "id": str(f.id),
+                    "name": f.name,
+                    "brand": f.brand,
+                    "calories_per_100g": f.calories_per_100g,
+                    "protein_per_100g": f.protein_per_100g,
+                }
+                for f in foods
+            ]
+        },
+        success=True,
+    )
+
+
+async def _update_meal(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
+    """Update a meal via tool call."""
+    meal_id = UUID(args["meal_id"])
+    result = await db.execute(
+        select(Meal).where(and_(Meal.id == meal_id, Meal.user_id == user.id))
+    )
+    meal = result.scalar_one_or_none()
+
+    if not meal:
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            result=None,
+            success=False,
+            error="Meal not found",
+        )
+
+    if "name" in args:
+        meal.name = args["name"]
+    if "meal_type" in args:
+        meal.meal_type = MealType(args["meal_type"])
+
+    await db.flush()
+
+    return ToolResult(
+        tool_call_id=tool_call_id,
+        result={"meal_id": str(meal.id), "name": meal.name, "message": "Meal updated!"},
+        success=True,
+    )
+
+
+async def _delete_meal(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
+    """Delete a meal via tool call."""
+    meal_id = UUID(args["meal_id"])
+    result = await db.execute(
+        select(Meal).where(and_(Meal.id == meal_id, Meal.user_id == user.id))
+    )
+    meal = result.scalar_one_or_none()
+
+    if not meal:
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            result=None,
+            success=False,
+            error="Meal not found",
+        )
+
+    meal_name = meal.name
+    await db.delete(meal)
+    await db.flush()
+
+    return ToolResult(
+        tool_call_id=tool_call_id,
+        result={"message": f"Deleted {meal_name}"},
+        success=True,
+    )
+
+
+async def _update_workout(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
+    """Update a workout via tool call."""
+    workout_id = UUID(args["workout_id"])
+    result = await db.execute(
+        select(WorkoutLog).where(and_(WorkoutLog.id == workout_id, WorkoutLog.user_id == user.id))
+    )
+    workout = result.scalar_one_or_none()
+
+    if not workout:
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            result=None,
+            success=False,
+            error="Workout not found",
+        )
+
+    if "name" in args:
+        workout.name = args["name"]
+    if "duration_min" in args:
+        workout.duration_min = args["duration_min"]
+
+    await db.flush()
+
+    return ToolResult(
+        tool_call_id=tool_call_id,
+        result={"workout_id": str(workout.id), "name": workout.name, "message": "Workout updated!"},
+        success=True,
+    )
+
+
+async def _delete_workout(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
+    """Delete a workout via tool call."""
+    workout_id = UUID(args["workout_id"])
+    result = await db.execute(
+        select(WorkoutLog).where(and_(WorkoutLog.id == workout_id, WorkoutLog.user_id == user.id))
+    )
+    workout = result.scalar_one_or_none()
+
+    if not workout:
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            result=None,
+            success=False,
+            error="Workout not found",
+        )
+
+    workout_name = workout.name
+    await db.delete(workout)
+    await db.flush()
+
+    return ToolResult(
+        tool_call_id=tool_call_id,
+        result={"message": f"Deleted {workout_name}"},
+        success=True,
+    )
+
+
+async def _update_workout_plan(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
+    """Update a workout plan via tool call."""
+    plan_id = UUID(args["plan_id"])
+    result = await db.execute(
+        select(WorkoutPlan).where(and_(WorkoutPlan.id == plan_id, WorkoutPlan.user_id == user.id))
+    )
+    plan = result.scalar_one_or_none()
+
+    if not plan:
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            result=None,
+            success=False,
+            error="Plan not found",
+        )
+
+    if "name" in args:
+        plan.name = args["name"]
+    if "is_active" in args:
+        plan.is_active = args["is_active"]
+
+    await db.flush()
+
+    return ToolResult(
+        tool_call_id=tool_call_id,
+        result={"plan_id": str(plan.id), "name": plan.name, "message": "Plan updated!"},
+        success=True,
+    )
+
+
+async def _delete_workout_plan(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
+    """Delete a workout plan via tool call."""
+    plan_id = UUID(args["plan_id"])
+    result = await db.execute(
+        select(WorkoutPlan).where(and_(WorkoutPlan.id == plan_id, WorkoutPlan.user_id == user.id))
+    )
+    plan = result.scalar_one_or_none()
+
+    if not plan:
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            result=None,
+            success=False,
+            error="Plan not found",
+        )
+
+    plan_name = plan.name
+    await db.delete(plan)
+    await db.flush()
+
+    return ToolResult(
+        tool_call_id=tool_call_id,
+        result={"message": f"Deleted {plan_name}"},
+        success=True,
+    )
+
+
+async def _get_weekly_summary(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
+    """Get weekly summary via tool call."""
+    from datetime import timedelta
+
+    week_offset = args.get("week_offset", 0)
+    today = datetime.now()
+    week_start = today - timedelta(days=today.weekday() + week_offset * 7)
+    week_end = week_start + timedelta(days=7)
+
+    meals_result = await db.execute(
+        select(Meal).where(
+            and_(Meal.user_id == user.id, Meal.timestamp >= week_start, Meal.timestamp < week_end)
+        )
+    )
+    meals = meals_result.scalars().all()
+
+    workouts_result = await db.execute(
+        select(WorkoutLog).where(
+            and_(WorkoutLog.user_id == user.id, WorkoutLog.start_time >= week_start, WorkoutLog.start_time < week_end)
+        )
+    )
+    workouts = workouts_result.scalars().all()
+
+    total_calories = sum(m.total_calories for m in meals)
+    total_protein = sum(m.total_protein_g for m in meals)
+    days_with_data = 7
+
+    return ToolResult(
+        tool_call_id=tool_call_id,
+        result={
+            "week_start": week_start.strftime("%Y-%m-%d"),
+            "week_end": week_end.strftime("%Y-%m-%d"),
+            "avg_calories_per_day": round(total_calories / days_with_data) if days_with_data > 0 else 0,
+            "avg_protein_per_day": round(total_protein / days_with_data, 1) if days_with_data > 0 else 0,
+            "total_workouts": len(workouts),
+            "total_workout_minutes": sum(w.duration_min for w in workouts if w.duration_min),
+        },
+        success=True,
+    )
+
+
+async def _add_body_measurements(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
+    """Add body measurements via tool call."""
+    # Find the most recent weight entry or create a new one
+    result = await db.execute(
+        select(BodyWeightEntry)
+        .where(BodyWeightEntry.user_id == user.id)
+        .order_by(BodyWeightEntry.timestamp.desc())
+        .limit(1)
+    )
+    entry = result.scalar_one_or_none()
+
+    # If no recent entry or last entry is > 1 day old, create new
+    if not entry or (datetime.utcnow() - entry.timestamp).days > 0:
+        entry = BodyWeightEntry(
+            user_id=user.id,
+            weight_kg=user.current_weight_kg or 70,
+            timestamp=datetime.utcnow(),
+            source="chat",
+        )
+        db.add(entry)
+
+    if "body_fat_percent" in args:
+        entry.body_fat_percent = args["body_fat_percent"]
+    if "muscle_mass_kg" in args:
+        entry.muscle_mass_kg = args["muscle_mass_kg"]
+    if "water_percent" in args:
+        entry.water_percent = args["water_percent"]
+
+    await db.flush()
+
+    return ToolResult(
+        tool_call_id=tool_call_id,
+        result={
+            "entry_id": str(entry.id),
+            "body_fat_percent": entry.body_fat_percent,
+            "muscle_mass_kg": entry.muscle_mass_kg,
+            "water_percent": entry.water_percent,
+            "message": "Body measurements logged!"
+        },
+        success=True,
+    )
+
+
+async def _update_profile(
+    db: AsyncSession,
+    user: UserProfile,
+    args: dict,
+    tool_call_id: str,
+) -> ToolResult:
+    """Update user profile via tool call."""
+    if "display_name" in args:
+        user.display_name = args["display_name"]
+    if "height_cm" in args:
+        user.height_cm = args["height_cm"]
+    if "date_of_birth" in args:
+        user.date_of_birth = datetime.strptime(args["date_of_birth"], "%Y-%m-%d").date()
+
+    await db.flush()
+
+    return ToolResult(
+        tool_call_id=tool_call_id,
+        result={"message": "Profile updated!", "display_name": user.display_name},
         success=True,
     )
 

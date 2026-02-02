@@ -11,6 +11,11 @@ struct ChatView: View {
     @State private var inputText = ""
     @FocusState private var isInputFocused: Bool
 
+    // Load the most recent conversation ID when chat opens
+    private var previousConversationId: String? {
+        messages.last?.conversationId
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -25,6 +30,7 @@ struct ChatView: View {
 
                             if viewModel.isLoading {
                                 TypingIndicator()
+                                    .id("typing")
                             }
                         }
                         .padding(.horizontal, Theme.Spacing.md)
@@ -35,10 +41,48 @@ struct ChatView: View {
                             proxy.scrollTo(filteredMessages.last?.id, anchor: .bottom)
                         }
                     }
+                    .onChange(of: viewModel.isLoading) { _, isLoading in
+                        withAnimation {
+                            if isLoading {
+                                // Scroll to typing indicator when it appears
+                                proxy.scrollTo("typing", anchor: .bottom)
+                            } else if !filteredMessages.isEmpty {
+                                // Scroll to last message when loading finishes
+                                proxy.scrollTo(filteredMessages.last?.id, anchor: .bottom)
+                            }
+                        }
+                    }
+                    .onAppear {
+                        // Scroll to bottom when view appears
+                        if !filteredMessages.isEmpty {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                withAnimation {
+                                    proxy.scrollTo(filteredMessages.last?.id, anchor: .bottom)
+                                }
+                            }
+                        }
+                    }
                 }
 
                 Divider()
                     .background(Theme.Colors.border)
+
+                // Quick suggestions
+                if !viewModel.suggestions.isEmpty && !viewModel.isLoading {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            ForEach(viewModel.suggestions, id: \.self) { suggestion in
+                                SuggestionChip(text: suggestion) {
+                                    inputText = suggestion
+                                    sendMessage()
+                                }
+                            }
+                        }
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.vertical, Theme.Spacing.xs)
+                    }
+                    .background(Theme.Colors.background)
+                }
 
                 // Input
                 ChatInputBar(
@@ -73,6 +117,10 @@ struct ChatView: View {
         }
         .onAppear {
             addWelcomeMessageIfNeeded()
+            // Restore previous conversation ID to continue the conversation
+            if let previousId = previousConversationId {
+                viewModel.conversationId = previousId
+            }
         }
     }
 
@@ -184,6 +232,30 @@ struct TypingIndicator: View {
         .onAppear {
             animating = true
         }
+    }
+}
+
+// MARK: - Suggestion Chip
+
+struct SuggestionChip: View {
+    let text: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(text)
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.textPrimary)
+                .padding(.horizontal, Theme.Spacing.sm)
+                .padding(.vertical, Theme.Spacing.xs)
+                .background(Theme.Colors.surface)
+                .cornerRadius(Theme.Radius.large)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.large)
+                        .stroke(Theme.Colors.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 

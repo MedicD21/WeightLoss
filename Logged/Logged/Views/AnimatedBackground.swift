@@ -10,7 +10,7 @@ struct AnimatedBackground: View {
             Theme.Colors.background
                 .ignoresSafeArea()
 
-            // Animated floating orbs
+            // Animated floating orbs - enhanced for visibility
             OrbShape(
                 offset: CGPoint(x: -100, y: -150),
                 animationPhase: animationPhase,
@@ -29,14 +29,14 @@ struct AnimatedBackground: View {
                 offset: CGPoint(x: -80, y: 200),
                 animationPhase: animationPhase,
                 delay: 1,
-                color: Theme.Colors.accent.opacity(0.6)
+                color: Theme.Colors.accent.opacity(0.8)
             )
 
             OrbShape(
                 offset: CGPoint(x: 120, y: 150),
                 animationPhase: animationPhase,
                 delay: 1.5,
-                color: Theme.Colors.info.opacity(0.4)
+                color: Theme.Colors.info.opacity(0.6)
             )
 
             // Subtle grid overlay

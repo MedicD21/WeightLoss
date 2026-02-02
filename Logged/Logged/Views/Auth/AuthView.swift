@@ -108,7 +108,7 @@ struct AuthView: View {
 
             Spacer()
         }
-        .background(Theme.Colors.background)
+        .background(Color.clear)
         .alert("Check your email", isPresented: $showingMagicLinkSent) {
             Button("OK", role: .cancel) {}
         } message: {

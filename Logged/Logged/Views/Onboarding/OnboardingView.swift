@@ -88,7 +88,7 @@ struct OnboardingView: View {
             .padding(.horizontal, Theme.Spacing.lg)
             .padding(.bottom, Theme.Spacing.xl)
         }
-        .background(Theme.Colors.background)
+        .background(Color.clear)
     }
 
     private var canProceed: Bool {

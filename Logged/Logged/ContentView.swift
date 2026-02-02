@@ -48,36 +48,43 @@ struct MainTabView: View {
     var body: some View {
         TabView(selection: $appState.selectedTab) {
             DashboardView()
+                .toolbarBackground(.hidden, for: .navigationBar)
                 .tabItem {
                     Label(AppState.Tab.dashboard.rawValue, systemImage: AppState.Tab.dashboard.icon)
                 }
                 .tag(AppState.Tab.dashboard)
 
             FoodView()
+                .toolbarBackground(.hidden, for: .navigationBar)
                 .tabItem {
                     Label(AppState.Tab.food.rawValue, systemImage: AppState.Tab.food.icon)
                 }
                 .tag(AppState.Tab.food)
 
             WorkoutView()
+                .toolbarBackground(.hidden, for: .navigationBar)
                 .tabItem {
                     Label(AppState.Tab.workout.rawValue, systemImage: AppState.Tab.workout.icon)
                 }
                 .tag(AppState.Tab.workout)
 
             ProgressView()
+                .toolbarBackground(.hidden, for: .navigationBar)
                 .tabItem {
                     Label(AppState.Tab.progress.rawValue, systemImage: AppState.Tab.progress.icon)
                 }
                 .tag(AppState.Tab.progress)
 
             ProfileView()
+                .toolbarBackground(.hidden, for: .navigationBar)
                 .tabItem {
                     Label(AppState.Tab.profile.rawValue, systemImage: AppState.Tab.profile.icon)
                 }
                 .tag(AppState.Tab.profile)
         }
         .tint(Theme.Colors.accent)
+        .background(Color.clear)
+        .toolbarBackground(.hidden, for: .tabBar)
         .sheet(isPresented: $appState.showingChat) {
             ChatView()
         }

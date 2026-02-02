@@ -80,7 +80,7 @@ struct DashboardView: View {
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.bottom, Theme.Spacing.xl)
             }
-            .background(Theme.Colors.background)
+            .background(Color.clear)
             .navigationTitle("Today")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -512,13 +512,6 @@ struct QuickAddWaterView: View {
                         saveWater()
                     }
                     .disabled(amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-            .onAppear {
-                if amountText.isEmpty {
-                    let defaultMl = Constants.Defaults.defaultGlassSize
-                    let defaultValue = useMetric ? Double(defaultMl) : UnitConverter.mlToFlOz(defaultMl)
-                    amountText = String(format: "%.0f", defaultValue)
                 }
             }
         }

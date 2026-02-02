@@ -53,7 +53,7 @@ struct FoodView: View {
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.bottom, Theme.Spacing.xl)
             }
-            .background(Theme.Colors.background)
+            .background(Color.clear)
             .navigationTitle("Food")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -439,7 +439,7 @@ struct MealCard: View {
         }
         .padding(Theme.Spacing.md)
         .cardStyle()
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+        .swipeActions(edge: .trailing) {
             Button(role: .destructive, action: onDelete) {
                 Label("Delete", systemImage: "trash")
             }
@@ -522,62 +522,227 @@ struct AddMealView: View {
     @State private var errorMessage: String?
     @State private var isSaving = false
 
+    // Food search state
+    @State private var searchText = ""
+    @State private var isSearching = false
+    @State private var searchResults: [OFFProduct] = []
+    @State private var showManualEntry = false
+
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Meal") {
-                    TextField("Meal name", text: $mealName)
-
+            ScrollView {
+                VStack(spacing: Theme.Spacing.md) {
+                    // Meal type picker
                     Picker("Type", selection: $mealType) {
                         ForEach(MealType.allCases, id: \.self) { type in
                             Text(type.displayName).tag(type)
                         }
                     }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, Theme.Spacing.md)
 
-                    TextField("Notes (optional)", text: $notes)
-                }
-
-                Section("Nutrition") {
-                    HStack {
-                        TextField("Calories", text: $caloriesText)
-                            .keyboardType(.numberPad)
-                        Text("cal")
+                    // Food search section
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text("Search Food Database")
+                            .font(Theme.Typography.caption)
                             .foregroundColor(Theme.Colors.textSecondary)
+                            .padding(.horizontal, Theme.Spacing.md)
+
+                        HStack(spacing: Theme.Spacing.sm) {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(Theme.Colors.textSecondary)
+
+                            TextField("Search foods...", text: $searchText)
+                                .textInputAutocapitalization(.none)
+                                .disableAutocorrection(true)
+                                .onSubmit { performSearch() }
+
+                            if !searchText.isEmpty {
+                                Button(action: { searchText = "" }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(Theme.Colors.textSecondary)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, Theme.Spacing.sm)
+                        .padding(.vertical, Theme.Spacing.xs)
+                        .background(Theme.Colors.surface)
+                        .cornerRadius(Theme.Radius.medium)
+                        .padding(.horizontal, Theme.Spacing.md)
+
+                        // Search results or loading indicator
+                        if isSearching {
+                            VStack(spacing: Theme.Spacing.md) {
+                                ProgressView()
+                                    .tint(Theme.Colors.accent)
+                                Text("Searching...")
+                                    .font(Theme.Typography.caption)
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, Theme.Spacing.xl)
+                        } else if !searchResults.isEmpty {
+                            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                                Text("\(searchResults.count) Results")
+                                    .font(Theme.Typography.caption)
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                                    .padding(.horizontal, Theme.Spacing.md)
+
+                                ForEach(searchResults, id: \.code) { product in
+                                    Button(action: { selectFood(product) }) {
+                                        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                                            Text(product.name)
+                                                .font(Theme.Typography.headline)
+                                                .foregroundColor(Theme.Colors.textPrimary)
+                                                .lineLimit(2)
+                                                .multilineTextAlignment(.leading)
+
+                                            HStack(spacing: Theme.Spacing.md) {
+                                                VStack(alignment: .leading, spacing: 2) {
+                                                    Text("Calories")
+                                                        .font(Theme.Typography.caption2)
+                                                        .foregroundColor(Theme.Colors.textSecondary)
+                                                    Text("\(product.caloriesPer100g ?? 0) kcal")
+                                                        .font(Theme.Typography.callout)
+                                                        .foregroundColor(Theme.Colors.calories)
+                                                }
+
+                                                Divider()
+                                                    .frame(height: 30)
+
+                                                VStack(alignment: .leading, spacing: 2) {
+                                                    Text("Protein")
+                                                        .font(Theme.Typography.caption2)
+                                                        .foregroundColor(Theme.Colors.textSecondary)
+                                                    Text("\(String(format: "%.1f", product.proteinPer100g ?? 0))g")
+                                                        .font(Theme.Typography.callout)
+                                                        .foregroundColor(Theme.Colors.protein)
+                                                }
+
+                                                Spacer()
+                                            }
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.vertical, Theme.Spacing.sm)
+                                        .padding(.horizontal, Theme.Spacing.md)
+                                        .background(Theme.Colors.surface)
+                                        .cornerRadius(Theme.Radius.medium)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, Theme.Spacing.md)
+                        } else if !searchText.isEmpty && !isSearching {
+                            Text("No results found")
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, Theme.Spacing.lg)
+                        }
                     }
 
-                    HStack {
-                        TextField("Protein", text: $proteinText)
-                            .keyboardType(.decimalPad)
-                        Text("g")
-                            .foregroundColor(Theme.Colors.textSecondary)
+                    if !searchResults.isEmpty || showManualEntry {
+                        Divider()
+                            .padding(.vertical, Theme.Spacing.sm)
                     }
 
-                    HStack {
-                        TextField("Carbs", text: $carbsText)
-                            .keyboardType(.decimalPad)
-                        Text("g")
-                            .foregroundColor(Theme.Colors.textSecondary)
-                    }
+                    // Manual entry section
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        if searchResults.isEmpty && !searchText.isEmpty {
+                            Text("Or Create Your Own")
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                                .padding(.horizontal, Theme.Spacing.md)
+                        } else if !showManualEntry && searchResults.isEmpty {
+                            Button(action: { showManualEntry = true }) {
+                                HStack {
+                                    Text("+ Manual Entry")
+                                        .font(Theme.Typography.subheadline)
+                                        .foregroundColor(Theme.Colors.accent)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, Theme.Spacing.md)
+                            }
+                        }
 
-                    HStack {
-                        TextField("Fat", text: $fatText)
-                            .keyboardType(.decimalPad)
-                        Text("g")
-                            .foregroundColor(Theme.Colors.textSecondary)
-                    }
+                        if showManualEntry || searchResults.isEmpty && searchText.isEmpty {
+                            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                                    Text("Meal Name")
+                                        .font(Theme.Typography.caption)
+                                        .foregroundColor(Theme.Colors.textSecondary)
+                                    TextField("Meal name", text: $mealName)
+                                        .padding(.vertical, Theme.Spacing.xs)
+                                        .padding(.horizontal, Theme.Spacing.sm)
+                                        .background(Theme.Colors.surface)
+                                        .cornerRadius(Theme.Radius.medium)
+                                }
 
-                    HStack {
-                        TextField("Serving size", text: $gramsText)
-                            .keyboardType(.decimalPad)
-                        Text("g")
-                            .foregroundColor(Theme.Colors.textSecondary)
-                    }
-                }
+                                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                                    Text("Nutrition")
+                                        .font(Theme.Typography.caption)
+                                        .foregroundColor(Theme.Colors.textSecondary)
 
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(Theme.Colors.error)
+                                    HStack {
+                                        TextField("Calories", text: $caloriesText)
+                                            .keyboardType(.numberPad)
+                                        Text("cal").foregroundColor(Theme.Colors.textSecondary)
+                                    }
+                                    .padding(.vertical, Theme.Spacing.xs)
+                                    .padding(.horizontal, Theme.Spacing.sm)
+                                    .background(Theme.Colors.surface)
+                                    .cornerRadius(Theme.Radius.medium)
+
+                                    HStack {
+                                        TextField("Protein", text: $proteinText)
+                                            .keyboardType(.decimalPad)
+                                        Text("g").foregroundColor(Theme.Colors.textSecondary)
+                                    }
+                                    .padding(.vertical, Theme.Spacing.xs)
+                                    .padding(.horizontal, Theme.Spacing.sm)
+                                    .background(Theme.Colors.surface)
+                                    .cornerRadius(Theme.Radius.medium)
+
+                                    HStack {
+                                        TextField("Carbs", text: $carbsText)
+                                            .keyboardType(.decimalPad)
+                                        Text("g").foregroundColor(Theme.Colors.textSecondary)
+                                    }
+                                    .padding(.vertical, Theme.Spacing.xs)
+                                    .padding(.horizontal, Theme.Spacing.sm)
+                                    .background(Theme.Colors.surface)
+                                    .cornerRadius(Theme.Radius.medium)
+
+                                    HStack {
+                                        TextField("Fat", text: $fatText)
+                                            .keyboardType(.decimalPad)
+                                        Text("g").foregroundColor(Theme.Colors.textSecondary)
+                                    }
+                                    .padding(.vertical, Theme.Spacing.xs)
+                                    .padding(.horizontal, Theme.Spacing.sm)
+                                    .background(Theme.Colors.surface)
+                                    .cornerRadius(Theme.Radius.medium)
+
+                                    HStack {
+                                        TextField("Serving size", text: $gramsText)
+                                            .keyboardType(.decimalPad)
+                                        Text("g").foregroundColor(Theme.Colors.textSecondary)
+                                    }
+                                    .padding(.vertical, Theme.Spacing.xs)
+                                    .padding(.horizontal, Theme.Spacing.sm)
+                                    .background(Theme.Colors.surface)
+                                    .cornerRadius(Theme.Radius.medium)
+                                }
+
+                                if let errorMessage {
+                                    Text(errorMessage)
+                                        .font(Theme.Typography.caption)
+                                        .foregroundColor(Theme.Colors.error)
+                                }
+                            }
+                            .padding(.horizontal, Theme.Spacing.md)
+                        }
+                    }
                 }
             }
             .navigationTitle("Add Meal")
@@ -591,6 +756,36 @@ struct AddMealView: View {
                 }
             }
         }
+    }
+
+    private func performSearch() {
+        guard !searchText.isEmpty else {
+            searchResults = []
+            return
+        }
+
+        isSearching = true
+        Task {
+            do {
+                searchResults = try await OpenFoodFactsService.shared.search(query: searchText)
+                isSearching = false
+            } catch {
+                isSearching = false
+                searchResults = []
+            }
+        }
+    }
+
+    private func selectFood(_ product: OFFProduct) {
+        mealName = product.name
+        caloriesText = String(Int(product.caloriesPer100g ?? 0))
+        proteinText = String(format: "%.1f", product.proteinPer100g ?? 0)
+        carbsText = String(format: "%.1f", product.carbsPer100g ?? 0)
+        fatText = String(format: "%.1f", product.fatPer100g ?? 0)
+        gramsText = "100"
+        searchResults = []
+        searchText = ""
+        showManualEntry = true
     }
 
     private func saveMeal() {
@@ -1255,12 +1450,14 @@ struct FoodPhotoView: View {
     @State private var selectedItem: PhotosPickerItem?
     @State private var cameraImage: UIImage?
     @State private var showingCameraPicker = false
+    @State private var pendingImageData: Data?
     @State private var imageData: Data?
     @State private var analysis: VisionAnalyzeResponse?
     @State private var isAnalyzing = false
     @State private var errorMessage: String?
     @State private var isSaving = false
     @State private var mealType: MealType = .other
+    @State private var showingPhotoConfirmation = false
     private var isCameraAvailable: Bool { UIImagePickerController.isSourceTypeAvailable(.camera) }
 
     var body: some View {
@@ -1340,11 +1537,26 @@ struct FoodPhotoView: View {
             }
             .onChange(of: selectedItem) { _, newItem in
                 guard let newItem else { return }
-                loadPhoto(from: newItem)
+                loadPhotoForConfirmation(from: newItem)
             }
             .onChange(of: cameraImage) { _, newImage in
                 guard let newImage else { return }
-                loadPhoto(from: newImage)
+                loadPhotoForConfirmation(from: newImage)
+            }
+            .confirmationDialog(
+                "Confirm Photo",
+                isPresented: $showingPhotoConfirmation,
+                presenting: pendingImageData
+            ) { imageData in
+                Button("Analyze Photo") {
+                    self.imageData = imageData
+                    analyzePhoto()
+                }
+                Button("Choose Different Photo", role: .cancel) {
+                    pendingImageData = nil
+                }
+            } message: { _ in
+                Text("Use this photo for food analysis?")
             }
             .sheet(isPresented: $showingCameraPicker) {
                 CameraImagePicker(image: $cameraImage)
@@ -1420,15 +1632,17 @@ struct FoodPhotoView: View {
         .cornerRadius(Theme.Radius.small)
     }
 
-    private func loadPhoto(from item: PhotosPickerItem) {
+    private func loadPhotoForConfirmation(from item: PhotosPickerItem) {
         errorMessage = nil
         analysis = nil
-        isAnalyzing = true
 
         Task {
             do {
                 if let data = try await item.loadTransferable(type: Data.self) {
-                    await analyzeImageData(data)
+                    await MainActor.run {
+                        pendingImageData = data
+                        showingPhotoConfirmation = true
+                    }
                     return
                 }
             } catch {
@@ -1436,20 +1650,32 @@ struct FoodPhotoView: View {
             }
 
             if let data = await loadPhotoAssetData(from: item) {
-                await analyzeImageData(data)
+                await MainActor.run {
+                    pendingImageData = data
+                    showingPhotoConfirmation = true
+                }
                 return
             }
 
             await MainActor.run {
                 errorMessage = "Could not read that photo. If it is in iCloud, open it in Photos to download first."
-                isAnalyzing = false
             }
         }
     }
 
-    private func loadPhoto(from image: UIImage) {
+    private func loadPhotoForConfirmation(from image: UIImage) {
+        guard let data = image.jpegData(compressionQuality: 0.9) else {
+            errorMessage = "Could not process the photo."
+            return
+        }
+        pendingImageData = data
+        showingPhotoConfirmation = true
+    }
+
+    private func analyzePhoto() {
+        guard let data = imageData else { return }
         Task {
-            await analyzeImageData(from: image)
+            await analyzeImageData(data)
         }
     }
 

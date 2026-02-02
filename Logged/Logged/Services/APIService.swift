@@ -340,6 +340,18 @@ final class APIService: ObservableObject {
         try await request(endpoint: "nutrition/meals/\(mealId.uuidString)/items/\(itemId.uuidString)", method: .DELETE)
     }
 
+    func deleteWaterEntry(id: UUID) async throws {
+        try await requestVoid(endpoint: "tracking/water/\(id.uuidString)", method: .DELETE)
+    }
+
+    func deleteWeightEntry(id: UUID) async throws {
+        try await requestVoid(endpoint: "tracking/weight/\(id.uuidString)", method: .DELETE)
+    }
+
+    func deleteWorkoutLog(id: UUID) async throws {
+        try await requestVoid(endpoint: "workouts/logs/\(id.uuidString)", method: .DELETE)
+    }
+
     func fetchWorkoutLog(id: UUID) async throws -> WorkoutLogResponseDTO {
         try await request(endpoint: "workouts/logs/\(id.uuidString)")
     }

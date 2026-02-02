@@ -42,7 +42,7 @@ struct ProfileView: View {
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.bottom, Theme.Spacing.xl)
             }
-            .background(Theme.Colors.background)
+            .background(Color.clear)
             .navigationTitle("Profile")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -107,13 +107,22 @@ struct ProfileHeaderSection: View {
 // MARK: - Current Targets
 
 struct CurrentTargetsSection: View {
+    @State private var showingEditGoals = false
     let targets: MacroTargets
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            Text("Daily Targets")
-                .font(Theme.Typography.headline)
-                .foregroundColor(Theme.Colors.textPrimary)
+            HStack {
+                Text("Daily Targets")
+                    .font(Theme.Typography.headline)
+                    .foregroundColor(Theme.Colors.textPrimary)
+                Spacer()
+                Button("Edit") {
+                    showingEditGoals = true
+                }
+                .font(Theme.Typography.subheadline)
+                .foregroundColor(Theme.Colors.accent)
+            }
 
             HStack(spacing: Theme.Spacing.md) {
                 TargetCard(label: "Calories", value: "\(targets.calories)", unit: "cal", color: Theme.Colors.calories)
@@ -137,6 +146,9 @@ struct CurrentTargetsSection: View {
         }
         .padding(Theme.Spacing.md)
         .cardStyle()
+        .sheet(isPresented: $showingEditGoals) {
+            EditGoalsView()
+        }
     }
 }
 
@@ -211,14 +223,23 @@ struct MetricRow: View {
 // MARK: - Goals Section
 
 struct GoalsSection: View {
+    @State private var showingEditGoals = false
     let profile: UserProfile?
     private var useMetric: Bool { profile?.useMetric ?? false }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            Text("Goals")
-                .font(Theme.Typography.headline)
-                .foregroundColor(Theme.Colors.textPrimary)
+            HStack {
+                Text("Goals")
+                    .font(Theme.Typography.headline)
+                    .foregroundColor(Theme.Colors.textPrimary)
+                Spacer()
+                Button("Edit") {
+                    showingEditGoals = true
+                }
+                .font(Theme.Typography.subheadline)
+                .foregroundColor(Theme.Colors.accent)
+            }
 
             VStack(spacing: Theme.Spacing.sm) {
                 MetricRow(label: "Goal", value: profile?.goalType.displayName ?? "Not set")
@@ -247,6 +268,9 @@ struct GoalsSection: View {
         }
         .padding(Theme.Spacing.md)
         .cardStyle()
+        .sheet(isPresented: $showingEditGoals) {
+            EditGoalsView()
+        }
     }
 }
 

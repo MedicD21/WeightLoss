@@ -54,7 +54,7 @@ struct ProgressView: View {
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.bottom, Theme.Spacing.xl)
             }
-            .background(Theme.Colors.background)
+            .background(Color.clear)
             .navigationTitle("Progress")
         }
     }

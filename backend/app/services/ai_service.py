@@ -304,33 +304,214 @@ ASSISTANT_TOOLS = [
                 }
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_favorite_food",
+            "description": "Save a food to favorites for quick logging later.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Food name"},
+                    "brand": {"type": "string", "description": "Brand name (optional)"},
+                    "calories_per_100g": {"type": "integer", "description": "Calories per 100g"},
+                    "protein_per_100g": {"type": "number", "description": "Protein in grams per 100g"},
+                    "carbs_per_100g": {"type": "number", "description": "Carbs in grams per 100g"},
+                    "fat_per_100g": {"type": "number", "description": "Fat in grams per 100g"},
+                    "default_serving_g": {"type": "number", "description": "Default serving size in grams"}
+                },
+                "required": ["name", "calories_per_100g", "protein_per_100g", "carbs_per_100g", "fat_per_100g"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_favorite_foods",
+            "description": "Get user's saved favorite foods.",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_meal",
+            "description": "Update an existing meal entry.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "meal_id": {"type": "string", "description": "ID of the meal to update"},
+                    "name": {"type": "string", "description": "New meal name (optional)"},
+                    "meal_type": {
+                        "type": "string",
+                        "enum": ["breakfast", "lunch", "dinner", "snack", "other"],
+                        "description": "New meal type (optional)"
+                    }
+                },
+                "required": ["meal_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_meal",
+            "description": "Delete a meal entry.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "meal_id": {"type": "string", "description": "ID of the meal to delete"}
+                },
+                "required": ["meal_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_workout",
+            "description": "Update an existing workout entry.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "workout_id": {"type": "string", "description": "ID of the workout to update"},
+                    "name": {"type": "string", "description": "New workout name (optional)"},
+                    "duration_min": {"type": "integer", "description": "New duration in minutes (optional)"}
+                },
+                "required": ["workout_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_workout",
+            "description": "Delete a workout entry.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "workout_id": {"type": "string", "description": "ID of the workout to delete"}
+                },
+                "required": ["workout_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_workout_plan",
+            "description": "Update an existing workout plan.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "plan_id": {"type": "string", "description": "ID of the plan to update"},
+                    "name": {"type": "string", "description": "New plan name (optional)"},
+                    "is_active": {"type": "boolean", "description": "Whether plan is active (optional)"}
+                },
+                "required": ["plan_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_workout_plan",
+            "description": "Delete a workout plan.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "plan_id": {"type": "string", "description": "ID of the plan to delete"}
+                },
+                "required": ["plan_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weekly_summary",
+            "description": "Get weekly nutrition and activity summary.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "week_offset": {
+                        "type": "integer",
+                        "description": "Weeks ago (0 = this week, 1 = last week, etc.)",
+                        "default": 0
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_body_measurements",
+            "description": "Log body composition measurements like body fat percentage, muscle mass.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "body_fat_percent": {"type": "number", "description": "Body fat percentage"},
+                    "muscle_mass_kg": {"type": "number", "description": "Muscle mass in kg"},
+                    "water_percent": {"type": "number", "description": "Body water percentage"}
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_profile",
+            "description": "Update user profile information.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "display_name": {"type": "string", "description": "Display name"},
+                    "height_cm": {"type": "number", "description": "Height in cm"},
+                    "date_of_birth": {"type": "string", "description": "Date of birth YYYY-MM-DD"}
+                }
+            }
+        }
     }
 ]
 
-SYSTEM_PROMPT = """You are Logged, a friendly and knowledgeable fitness assistant. You help users track their nutrition, workouts, water intake, and body weight.
+SYSTEM_PROMPT = """You are Terry, a friendly and knowledgeable fitness assistant for the Logged app. You help users manage all aspects of their fitness journey.
+
+Core capabilities:
+1. **Nutrition Tracking**: Log meals, search food database, save favorites, update/delete entries
+2. **Workout Tracking**: Log workouts, create workout plans, update/delete entries
+3. **Body Metrics**: Track weight, body fat %, muscle mass, water %
+4. **Goals & Progress**: Set goals, customize macros, view daily/weekly summaries
+5. **Water & Hydration**: Track water intake in oz, refer to typical serving sizes or suggest common amounts
+6. **Profile Management**: Update user info and preferences
 
 Key behaviors:
-1. Be concise and helpful. Don't be overly chatty.
-2. When users mention food they've eaten, use the add_meal tool to log it. Estimate portions and macros based on common values.
-3. When users mention exercise, use the add_workout tool.
-4. When users mention drinking water, use the add_water tool. A glass is ~250ml, a bottle ~500ml.
-5. When users mention their weight, use the add_weight tool.
-6. When users ask for a workout plan or routine, use the add_workout_plan tool.
-7. If users explicitly provide macro targets (calories/protein/carbs/fat), use set_custom_macros.
-8. If asked about nutrition for a food, use search_food to look it up.
-9. Provide encouragement but be realistic about health and fitness.
-10. If you're unsure about exact nutritional values, make reasonable estimates based on typical values and mention they are estimates.
-11. Convert units as needed (user may say lbs for weight, cups for water, etc.)
+- Be concise, friendly, and proactive. After completing a task, suggest related actions.
+- If user requests something outside your capabilities, politely inform them.
+- if user ask you to "Be a hard ass", then give them the buisness no bullshit talk. Do not stop until the user says "Okay Terrance". 
+- When users mention food, log it with add_meal. Estimate portions and macros when needed.
+- When users mention exercise, log it with add_workout or create a plan with add_workout_plan.
+- When users want to save frequently eaten foods, use save_favorite_food.
+- When users want to edit or remove entries, use update/delete tools.
+- When users ask about progress, use get_daily_summary or get_weekly_summary.
+- If users mention body composition (fat %, muscle mass), use add_body_measurements.
+- Convert units as needed (lbs to kg, cups to ml, etc.)
+- Make reasonable estimates and mention when values are estimated.
+- After completing tasks, suggest 2-3 helpful follow-up actions as quick suggestions.
 
 Common food estimates (per typical serving):
 - Eggs: 1 large = 72 cal, 6g protein, 0.5g carbs, 5g fat
-- Toast/bread slice: 80 cal, 3g protein, 15g carbs, 1g fat
+- Toast/bread: 80 cal, 3g protein, 15g carbs, 1g fat
 - Chicken breast (100g): 165 cal, 31g protein, 0g carbs, 3.6g fat
 - Rice (1 cup cooked): 200 cal, 4g protein, 45g carbs, 0.5g fat
 - Apple: 95 cal, 0.5g protein, 25g carbs, 0.3g fat
 - Banana: 105 cal, 1.3g protein, 27g carbs, 0.4g fat
 
-Always confirm what you've logged with a brief summary."""
+Always confirm actions with a brief summary and offer helpful next steps."""
 
 
 class AIService:
@@ -454,6 +635,10 @@ class AIService:
                     for block in content_blocks
                     if block.type == "tool_use"
                 ]
+
+                # If only tools and no text, provide a default message
+                if not message_text and tool_calls:
+                    message_text = "I've processed your request."
 
                 usage = response.usage
                 tokens_used = None

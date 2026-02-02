@@ -32,7 +32,7 @@ struct WorkoutView: View {
                     }
                 }
             }
-            .background(Theme.Colors.background)
+            .background(Color.clear)
             .navigationTitle("Workout")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -60,11 +60,13 @@ struct WorkoutView: View {
 // MARK: - Workout Log Section
 
 struct WorkoutLogSection: View {
+    @Environment(\.modelContext) private var modelContext
     let logs: [WorkoutLog]
+    @State private var logsToDisplay: [WorkoutLog] = []
 
     var thisWeekLogs: [WorkoutLog] {
         let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date())!
-        return logs.filter { $0.startTime >= weekAgo }
+        return logsToDisplay.filter { $0.startTime >= weekAgo }
     }
 
     var body: some View {
@@ -78,17 +80,29 @@ struct WorkoutLogSection: View {
                     .font(Theme.Typography.headline)
                     .foregroundColor(Theme.Colors.textPrimary)
 
-                if logs.isEmpty {
+                if logsToDisplay.isEmpty {
                     EmptyWorkoutsView()
                 } else {
-                    ForEach(logs.prefix(10)) { log in
-                        WorkoutLogCard(log: log)
+                    ForEach(logsToDisplay.prefix(10)) { log in
+                        WorkoutLogCard(log: log) {
+                            refreshLogs()
+                        }
                     }
                 }
             }
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.bottom, Theme.Spacing.xl)
+        .onAppear {
+            logsToDisplay = logs
+        }
+        .onChange(of: logs) { newLogs in
+            logsToDisplay = newLogs
+        }
+    }
+
+    private func refreshLogs() {
+        logsToDisplay = logs
     }
 }
 
@@ -147,7 +161,9 @@ struct StatItem: View {
 }
 
 struct WorkoutLogCard: View {
+    @Environment(\.modelContext) private var modelContext
     let log: WorkoutLog
+    let onDelete: (() -> Void)?
 
     var body: some View {
         HStack(spacing: Theme.Spacing.md) {
@@ -187,6 +203,26 @@ struct WorkoutLogCard: View {
         }
         .padding(Theme.Spacing.md)
         .cardStyle()
+        .contextMenu {
+            Button(role: .destructive) {
+                deleteWorkout()
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+    }
+
+    private func deleteWorkout() {
+        Task {
+            do {
+                try await APIService.shared.deleteWorkoutLog(id: log.id)
+                modelContext.delete(log)
+                try? modelContext.save()
+                onDelete?()
+            } catch {
+                print("Failed to delete workout: \(error)")
+            }
+        }
     }
 }
 
