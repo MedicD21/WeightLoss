@@ -126,11 +126,25 @@ struct AnyCodable: Codable {
     }
 }
 
+/// Tool execution result
+struct ToolResult: Decodable {
+    let toolCallId: String
+    let result: AnyCodable?
+    let success: Bool
+    let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case success, result, error
+        case toolCallId = "tool_call_id"
+    }
+}
+
 /// AI chat response
 struct ChatResponse: Decodable {
     let message: String
     let role: MessageRole
     let toolCalls: [ToolCall]?
+    let toolResults: [ToolResult]?
     let conversationId: String
     let modelUsed: String
     let tokensUsed: Int?
@@ -139,6 +153,7 @@ struct ChatResponse: Decodable {
     enum CodingKeys: String, CodingKey {
         case message, role, conversationId, modelUsed, tokensUsed
         case toolCalls = "tool_calls"
+        case toolResults = "tool_results"
         case createdEntries = "created_entries"
     }
 }

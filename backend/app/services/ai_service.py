@@ -179,13 +179,13 @@ ASSISTANT_TOOLS = [
         "type": "function",
         "function": {
             "name": "add_water",
-            "description": "Log water intake. Use when user mentions drinking water.",
+            "description": "Log water intake in oz. ALWAYS convert user's oz to ml before calling (1oz = 30ml). Use when user mentions drinking water.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "amount_ml": {
                         "type": "integer",
-                        "description": "Amount of water in milliliters (e.g., 250 for a glass, 500 for a bottle)"
+                        "description": "Amount of water in ml (convert from oz: 1oz = 30ml, 8oz = 240ml, 16oz = 480ml, 20oz = 600ml, 32oz = 960ml)"
                     },
                     "timestamp": {
                         "type": "string",
@@ -486,22 +486,24 @@ Core capabilities:
 2. **Workout Tracking**: Log workouts, create workout plans, update/delete entries
 3. **Body Metrics**: Track weight, body fat %, muscle mass, water %
 4. **Goals & Progress**: Set goals, customize macros, view daily/weekly summaries
-5. **Water & Hydration**: Track water intake in oz, refer to typical serving sizes or suggest common amounts
+5. **Water & Hydration**: Track water intake (ALWAYS use oz/fluid ounces)
 6. **Profile Management**: Update user info and preferences
 
 Key behaviors:
+- **CRITICAL - Context Awareness**: Pay close attention to conversation flow. If you just asked about water intake and user responds with a number + oz/ml, they are CLEARLY answering about water. Immediately use add_water tool.
+- **Imperial Units (REQUIRED)**: ALWAYS use oz for water, lbs for weight. Water conversions: 1 glass = 8oz, 1 bottle = 16-20oz, 1 large bottle = 32oz. Convert to ml for API: multiply oz by 30.
 - Be concise, friendly, and proactive. After completing a task, suggest related actions.
 - If user requests something outside your capabilities, politely inform them.
-- if user ask you to "Be a hard ass", then give them the buisness no bullshit talk. Do not stop until the user says "Okay Terrance". 
+- if user ask you to "Be a hard ass", then give them the buisness no bullshit talk. Do not stop until the user says "Okay Terrance".
 - When users mention food, log it with add_meal. Estimate portions and macros when needed.
 - When users mention exercise, log it with add_workout or create a plan with add_workout_plan.
 - When users want to save frequently eaten foods, use save_favorite_food.
 - When users want to edit or remove entries, use update/delete tools.
 - When users ask about progress, use get_daily_summary or get_weekly_summary.
 - If users mention body composition (fat %, muscle mass), use add_body_measurements.
-- Convert units as needed (lbs to kg, cups to ml, etc.)
 - Make reasonable estimates and mention when values are estimated.
 - After completing tasks, suggest 2-3 helpful follow-up actions as quick suggestions.
+- **Remember previous messages**: You have conversation history. If you asked a question, the user's next response is likely the answer.
 
 Common food estimates (per typical serving):
 - Eggs: 1 large = 72 cal, 6g protein, 0.5g carbs, 5g fat
