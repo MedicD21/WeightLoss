@@ -397,6 +397,51 @@ final class APIService: ObservableObject {
         try await requestVoid(endpoint: "tracking/weight/\(id.uuidString)", method: .DELETE)
     }
 
+    func createWorkoutLog(log: WorkoutLog) async throws {
+        // Convert SwiftData WorkoutLog to API DTO
+        let setsDTO = log.sets.map { set in
+            WorkoutSetLogCreateDTO(
+                exerciseName: set.exerciseName,
+                setNumber: set.setNumber,
+                reps: set.reps,
+                weightKg: set.weightKg,
+                durationSec: set.durationSec,
+                distanceM: set.distanceM,
+                completed: set.completed,
+                isWarmup: set.isWarmup,
+                isDropset: set.isDropset,
+                rpe: set.rpe,
+                notes: set.notes,
+                orderIndex: set.orderIndex
+            )
+        }
+
+        let logDTO = WorkoutLogCreateDTO(
+            name: log.name,
+            workoutType: log.workoutType,
+            startTime: log.startTime,
+            endTime: log.endTime,
+            durationMin: log.durationMin,
+            caloriesBurned: log.caloriesBurned,
+            avgHeartRate: log.avgHeartRate,
+            maxHeartRate: log.maxHeartRate,
+            distanceKm: log.distanceKm,
+            notes: log.notes,
+            rating: log.rating,
+            planId: log.planId,
+            source: log.source,
+            sets: setsDTO,
+            healthKitId: log.healthKitId,
+            localId: log.localId
+        )
+
+        let _: WorkoutLogResponseDTO = try await request(
+            endpoint: "workouts/logs",
+            method: .POST,
+            body: logDTO
+        )
+    }
+
     func deleteWorkoutLog(id: UUID) async throws {
         try await requestVoid(endpoint: "workouts/logs/\(id.uuidString)", method: .DELETE)
     }
@@ -571,6 +616,40 @@ struct FoodItemUpdateRequestDTO: Encodable {
     let nutriScoreGrade: String?
     let confidence: Double?
     let portionDescription: String?
+}
+
+struct WorkoutSetLogCreateDTO: Encodable {
+    let exerciseName: String
+    let setNumber: Int
+    let reps: Int?
+    let weightKg: Double?
+    let durationSec: Int?
+    let distanceM: Double?
+    let completed: Bool
+    let isWarmup: Bool
+    let isDropset: Bool
+    let rpe: Int?
+    let notes: String?
+    let orderIndex: Int
+}
+
+struct WorkoutLogCreateDTO: Encodable {
+    let name: String
+    let workoutType: WorkoutType
+    let startTime: Date
+    let endTime: Date?
+    let durationMin: Int
+    let caloriesBurned: Int?
+    let avgHeartRate: Int?
+    let maxHeartRate: Int?
+    let distanceKm: Double?
+    let notes: String?
+    let rating: Int?
+    let planId: UUID?
+    let source: LogSource
+    let sets: [WorkoutSetLogCreateDTO]
+    let healthKitId: String?
+    let localId: String?
 }
 
 struct WorkoutSetLogResponseDTO: Decodable {

@@ -612,7 +612,22 @@ struct CreatePlanView: View {
 
 struct WorkoutPlanDetailView: View {
     let plan: WorkoutPlan
+    @Environment(\.modelContext) private var modelContext
+    @Query private var userProfiles: [UserProfile]
     @Environment(\.dismiss) private var dismiss
+
+    @State private var completedExercises: Set<UUID> = []
+    @State private var startTime: Date = Date()
+    @State private var isSaving = false
+    @State private var showingCompleteConfirmation = false
+
+    var sortedExercises: [WorkoutExercise] {
+        plan.exercises.sorted(by: { $0.orderIndex < $1.orderIndex })
+    }
+
+    var allCompleted: Bool {
+        !sortedExercises.isEmpty && sortedExercises.allSatisfy { completedExercises.contains($0.id) }
+    }
 
     var body: some View {
         ScrollView {
@@ -651,6 +666,18 @@ struct WorkoutPlanDetailView: View {
                                 .foregroundColor(Theme.Colors.textSecondary)
                         }
                     }
+
+                    // Progress indicator
+                    if !completedExercises.isEmpty {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(Theme.Colors.success)
+                            Text("\(completedExercises.count)/\(plan.exercises.count) completed")
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.success)
+                        }
+                        .padding(.top, Theme.Spacing.xs)
+                    }
                 }
                 .padding(Theme.Spacing.md)
                 .cardStyle()
@@ -662,24 +689,136 @@ struct WorkoutPlanDetailView: View {
                         .foregroundColor(Theme.Colors.textPrimary)
                         .padding(.horizontal, Theme.Spacing.md)
 
-                    ForEach(plan.exercises.sorted(by: { $0.orderIndex < $1.orderIndex })) { exercise in
-                        ExerciseCard(exercise: exercise)
+                    ForEach(sortedExercises) { exercise in
+                        ExerciseCard(
+                            exercise: exercise,
+                            isCompleted: completedExercises.contains(exercise.id)
+                        ) {
+                            toggleExerciseCompletion(exercise)
+                        }
                     }
+                }
+
+                // Complete Workout Button
+                if !completedExercises.isEmpty {
+                    Button {
+                        showingCompleteConfirmation = true
+                    } label: {
+                        HStack {
+                            Image(systemName: allCompleted ? "checkmark.circle.fill" : "flag.checkered")
+                            Text(allCompleted ? "Complete Workout" : "Finish Early (\(completedExercises.count)/\(plan.exercises.count))")
+                        }
+                    }
+                    .buttonStyle(.primary)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .disabled(isSaving)
                 }
             }
             .padding(Theme.Spacing.md)
         }
         .background(Theme.Colors.background)
         .navigationBarTitleDisplayMode(.inline)
+        .alert("Complete Workout?", isPresented: $showingCompleteConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Complete") {
+                Task { await completeWorkout() }
+            }
+        } message: {
+            Text("Log this workout with \(completedExercises.count) completed exercises?")
+        }
+    }
+
+    private func toggleExerciseCompletion(_ exercise: WorkoutExercise) {
+        if completedExercises.contains(exercise.id) {
+            completedExercises.remove(exercise.id)
+        } else {
+            completedExercises.insert(exercise.id)
+        }
+    }
+
+    private func completeWorkout() async {
+        guard !completedExercises.isEmpty else { return }
+
+        isSaving = true
+        defer { isSaving = false }
+
+        let profile = getOrCreateProfile()
+        let endTime = Date()
+        let durationMin = max(1, Int(endTime.timeIntervalSince(startTime) / 60))
+
+        // Create workout log
+        let log = WorkoutLog(
+            userId: profile.id,
+            planId: plan.id,
+            name: plan.name,
+            workoutType: plan.workoutType,
+            source: .manual,
+            startTime: startTime,
+            durationMin: durationMin
+        )
+        log.endTime = endTime
+
+        modelContext.insert(log)
+
+        // Create set logs for completed exercises
+        var orderIndex = 0
+        for exercise in sortedExercises where completedExercises.contains(exercise.id) {
+            // Create a set log for each set in the exercise
+            for setNum in 1...exercise.sets {
+                let setLog = WorkoutSetLog(
+                    exerciseName: exercise.name,
+                    setNumber: setNum,
+                    reps: exercise.repsMin,
+                    durationSec: exercise.durationSec,
+                    completed: true,
+                    orderIndex: orderIndex
+                )
+                setLog.log = log
+                modelContext.insert(setLog)
+                orderIndex += 1
+            }
+        }
+
+        // Save to backend
+        do {
+            try await APIService.shared.createWorkoutLog(log: log)
+            try? modelContext.save()
+            dismiss()
+        } catch {
+            print("Failed to save workout: \(error)")
+        }
+    }
+
+    private func getOrCreateProfile() -> UserProfile {
+        if let profile = userProfiles.first {
+            return profile
+        }
+        let profile = UserProfile(email: "user@example.com")
+        modelContext.insert(profile)
+        return profile
     }
 }
 
 struct ExerciseCard: View {
     let exercise: WorkoutExercise
+    var isCompleted: Bool = false
+    var onToggle: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             HStack {
+                // Completion checkbox
+                if let toggle = onToggle {
+                    Button {
+                        toggle()
+                    } label: {
+                        Image(systemName: isCompleted ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 24))
+                            .foregroundColor(isCompleted ? Theme.Colors.success : Theme.Colors.textTertiary)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+
                 Text("\(exercise.orderIndex).")
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.textTertiary)
@@ -687,7 +826,8 @@ struct ExerciseCard: View {
 
                 Text(exercise.name)
                     .font(Theme.Typography.headline)
-                    .foregroundColor(Theme.Colors.textPrimary)
+                    .foregroundColor(isCompleted ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
+                    .strikethrough(isCompleted)
 
                 Spacer()
 

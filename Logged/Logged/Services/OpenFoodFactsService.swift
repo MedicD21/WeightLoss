@@ -40,15 +40,17 @@ final class OpenFoodFactsService {
 
     // MARK: - Search
 
-    func search(query: String, page: Int = 1, pageSize: Int = 20) async throws -> [OFFProduct] {
-        var components = URLComponents(url: baseURL.appendingPathComponent("search"), resolvingAgainstBaseURL: false)!
+    func search(query: String, page: Int = 1, pageSize: Int = 50) async throws -> [OFFProduct] {
+        // Use Search-a-licious API for best full-text search (Elasticsearch-based)
+        let searchURL = URL(string: "https://search.openfoodfacts.org/search")!
+        var components = URLComponents(url: searchURL, resolvingAgainstBaseURL: false)!
         components.queryItems = [
-            URLQueryItem(name: "search_terms", value: query),
+            URLQueryItem(name: "q", value: query),  // Query string
             URLQueryItem(name: "page", value: String(page)),
             URLQueryItem(name: "page_size", value: String(pageSize)),
-            URLQueryItem(name: "action", value: "process"),
-            URLQueryItem(name: "json", value: "true"),
-            URLQueryItem(name: "fields", value: "code,product_name,brands,nutriments,serving_size,serving_quantity,nutriscore_grade,image_url"),
+            URLQueryItem(name: "sort_by", value: "unique_scans_n"),  // Sort by popularity
+            URLQueryItem(name: "langs", value: "en"),  // English results
+            URLQueryItem(name: "countries_tags_en", value: "united-states"),  // US products
         ]
 
         var request = URLRequest(url: components.url!)
@@ -77,8 +79,43 @@ final class OpenFoodFactsService {
 
         do {
             let result = try decoder.decode(OFFSearchResponse.self, from: data)
-            print("[OFF DEBUG] Found \(result.products.count) products")
-            return result.products
+            print("[OFF DEBUG] Found \(result.products.count) products from API")
+
+            // Filter out products without essential nutrition data
+            let validProducts = result.products.filter { product in
+                guard let productName = product.productName,
+                      !productName.isEmpty else {
+                    print("[OFF DEBUG] Filtering out: no name")
+                    return false
+                }
+
+                guard let nutriments = product.nutriments else {
+                    print("[OFF DEBUG] Filtering out: \(productName) - no nutriments")
+                    return false
+                }
+
+                // Must have calories AND at least one macronutrient
+                let hasCalories = nutriments.energyKcal100g != nil && nutriments.energyKcal100g! > 0
+                let hasProtein = nutriments.proteins100g != nil
+                let hasCarbs = nutriments.carbohydrates100g != nil
+                let hasFat = nutriments.fat100g != nil
+                let hasMacros = hasProtein || hasCarbs || hasFat
+
+                let isValid = hasCalories && hasMacros
+
+                if !isValid {
+                    print("[OFF DEBUG] Filtering out: \(productName) - cal: \(nutriments.energyKcal100g ?? 0)")
+                }
+
+                return isValid
+            }
+
+            print("[OFF DEBUG] Found \(validProducts.count) valid products after filtering")
+
+            // Return top 20 results
+            let limitedResults = Array(validProducts.prefix(20))
+            print("[OFF DEBUG] Returning \(limitedResults.count) products")
+            return limitedResults
         } catch {
             print("[OFF DEBUG] Decode error: \(error)")
             if let responseString = String(data: data, encoding: .utf8) {
@@ -97,7 +134,11 @@ struct OFFResponse: Decodable {
 }
 
 struct OFFSearchResponse: Decodable {
-    let products: [OFFProduct]
+    let hits: [OFFProduct]
+
+    var products: [OFFProduct] {
+        hits
+    }
 }
 
 struct OFFProduct: Decodable {
@@ -112,12 +153,12 @@ struct OFFProduct: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case code
-        case productName = "product_name"
+        case productName      // Let .convertFromSnakeCase handle product_name → productName
         case brands
-        case imageUrl = "image_url"
-        case servingSize = "serving_size"
-        case servingQuantity = "serving_quantity"
-        case nutriscoreGrade = "nutriscore_grade"
+        case imageUrl         // Let .convertFromSnakeCase handle image_url → imageUrl
+        case servingSize      // Let .convertFromSnakeCase handle serving_size → servingSize
+        case servingQuantity  // Let .convertFromSnakeCase handle serving_quantity → servingQuantity
+        case nutriscoreGrade  // Let .convertFromSnakeCase handle nutriscore_grade → nutriscoreGrade
         case nutriments
     }
 
@@ -264,8 +305,16 @@ struct OFFNutriments: Decodable {
     let saturatedFat100g: Double?
 
     enum CodingKeys: String, CodingKey {
+        // Fields with hyphens - convertFromSnakeCase doesn't handle these
         case energyKcal100g = "energy-kcal_100g"
         case energyKcalServing = "energy-kcal_serving"
+        case saturatedFat100g = "saturated-fat_100g"
+
+        // Non-standard field names
+        case sugarAlcohol100g = "polyols_100g"
+        case sugarAlcoholServing = "polyols_serving"
+
+        // Fields with numbers - convertFromSnakeCase doesn't reliably handle these
         case proteins100g = "proteins_100g"
         case proteinsServing = "proteins_serving"
         case carbohydrates100g = "carbohydrates_100g"
@@ -275,9 +324,6 @@ struct OFFNutriments: Decodable {
         case fiber100g = "fiber_100g"
         case fiberServing = "fiber_serving"
         case sugars100g = "sugars_100g"
-        case sugarAlcohol100g = "polyols_100g"
-        case sugarAlcoholServing = "polyols_serving"
         case sodium100g = "sodium_100g"
-        case saturatedFat100g = "saturated-fat_100g"
     }
 }
