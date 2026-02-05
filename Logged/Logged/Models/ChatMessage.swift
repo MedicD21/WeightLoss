@@ -186,9 +186,9 @@ struct ChatResponse: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case message, role, conversationId, modelUsed, tokensUsed
-        case toolCalls = "tool_calls"
-        case toolResults = "tool_results"
-        case createdEntries = "created_entries"
+        case toolCalls      // Let .convertFromSnakeCase handle tool_calls → toolCalls
+        case toolResults    // Let .convertFromSnakeCase handle tool_results → toolResults
+        case createdEntries // Let .convertFromSnakeCase handle created_entries → createdEntries
     }
 
     init(from decoder: Decoder) throws {

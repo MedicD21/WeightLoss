@@ -257,7 +257,10 @@ struct WorkoutPlansSection: View {
                 EmptyPlansView()
             } else {
                 ForEach(plans) { plan in
-                    WorkoutPlanCard(plan: plan)
+                    NavigationLink(destination: WorkoutPlanDetailView(plan: plan)) {
+                        WorkoutPlanCard(plan: plan)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
         }
@@ -602,6 +605,140 @@ struct CreatePlanView: View {
         let profile = UserProfile(email: "user@example.com")
         modelContext.insert(profile)
         return profile
+    }
+}
+
+// MARK: - Workout Plan Detail
+
+struct WorkoutPlanDetailView: View {
+    let plan: WorkoutPlan
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                // Header
+                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                    HStack {
+                        Image(systemName: plan.workoutType.icon)
+                            .foregroundColor(Theme.Colors.accent)
+
+                        Text(plan.name)
+                            .font(Theme.Typography.title2)
+                            .foregroundColor(Theme.Colors.textPrimary)
+                    }
+
+                    if let description = plan.planDescription {
+                        Text(description)
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+
+                    HStack(spacing: Theme.Spacing.md) {
+                        if let duration = plan.estimatedDurationMin {
+                            Label("\(duration) min", systemImage: "clock")
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+
+                        Label("\(plan.exercises.count) exercises", systemImage: "list.bullet")
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.textSecondary)
+
+                        if !plan.scheduledDaysDisplay.isEmpty {
+                            Label(plan.scheduledDaysDisplay, systemImage: "calendar")
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                    }
+                }
+                .padding(Theme.Spacing.md)
+                .cardStyle()
+
+                // Exercises List
+                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                    Text("Exercises")
+                        .font(Theme.Typography.headline)
+                        .foregroundColor(Theme.Colors.textPrimary)
+                        .padding(.horizontal, Theme.Spacing.md)
+
+                    ForEach(plan.exercises.sorted(by: { $0.orderIndex < $1.orderIndex })) { exercise in
+                        ExerciseCard(exercise: exercise)
+                    }
+                }
+            }
+            .padding(Theme.Spacing.md)
+        }
+        .background(Theme.Colors.background)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct ExerciseCard: View {
+    let exercise: WorkoutExercise
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            HStack {
+                Text("\(exercise.orderIndex).")
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.textTertiary)
+                    .frame(width: 24, alignment: .leading)
+
+                Text(exercise.name)
+                    .font(Theme.Typography.headline)
+                    .foregroundColor(Theme.Colors.textPrimary)
+
+                Spacer()
+
+                if let muscleGroup = exercise.muscleGroup {
+                    Text(muscleGroup.rawValue.capitalized)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.accent)
+                        .padding(.horizontal, Theme.Spacing.xs)
+                        .padding(.vertical, 2)
+                        .background(Theme.Colors.accent.opacity(0.15))
+                        .cornerRadius(Theme.Radius.small)
+                }
+            }
+
+            HStack(spacing: Theme.Spacing.md) {
+                if let repsMin = exercise.repsMin {
+                    if let repsMax = exercise.repsMax, repsMax != repsMin {
+                        Text("\(exercise.sets) × \(repsMin)-\(repsMax) reps")
+                    } else {
+                        Text("\(exercise.sets) × \(repsMin) reps")
+                    }
+                } else if let duration = exercise.durationSec {
+                    Text("\(exercise.sets) × \(duration)s")
+                }
+
+                if exercise.restSec > 0 {
+                    Text("•")
+                    Text("\(exercise.restSec)s rest")
+                }
+            }
+            .font(Theme.Typography.caption)
+            .foregroundColor(Theme.Colors.textSecondary)
+            .padding(.leading, 32)
+
+            if let equipment = exercise.equipment {
+                Text("Equipment: \(equipment)")
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.textTertiary)
+                    .padding(.leading, 32)
+            }
+
+            if let notes = exercise.notes {
+                Text(notes)
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.textSecondary)
+                    .italic()
+                    .padding(.leading, 32)
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .cardStyle()
     }
 }
 
