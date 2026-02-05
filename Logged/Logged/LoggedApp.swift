@@ -53,6 +53,7 @@ class AppState: ObservableObject {
     @Published var isOnboarded = false
     @Published var selectedTab: Tab = .dashboard
     @Published var showingChat = false
+    @Published var isValidatingAuth = true
 
     enum Tab: String, CaseIterable {
         case dashboard = "Dashboard"
@@ -75,7 +76,12 @@ class AppState: ObservableObject {
     init() {
         // Check for existing auth token
         if let _ = KeychainService.shared.getToken() {
-            isAuthenticated = true
+            // Don't set isAuthenticated yet - validate first
+            Task { @MainActor in
+                await validateAuthToken()
+            }
+        } else {
+            isValidatingAuth = false
         }
 
         // Check if user has completed onboarding
@@ -84,6 +90,23 @@ class AppState: ObservableObject {
         #if canImport(WatchConnectivity)
         WatchConnectivityService.shared.activate()
         #endif
+    }
+
+    @MainActor
+    private func validateAuthToken() async {
+        do {
+            let isValid = try await APIService.shared.validateToken()
+            if isValid {
+                isAuthenticated = true
+            } else {
+                // Token is invalid, clear it
+                signOut()
+            }
+        } catch {
+            // Network error, assume offline - allow cached auth
+            isAuthenticated = true
+        }
+        isValidatingAuth = false
     }
 
     func signIn(token: String, refreshToken: String) {
@@ -96,6 +119,8 @@ class AppState: ObservableObject {
         KeychainService.shared.deleteToken()
         KeychainService.shared.deleteRefreshToken()
         isAuthenticated = false
+        isOnboarded = false
+        UserDefaults.standard.removeObject(forKey: "hasCompletedOnboarding")
     }
 
     func completeOnboarding() {

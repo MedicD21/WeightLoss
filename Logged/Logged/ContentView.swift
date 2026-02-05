@@ -14,7 +14,17 @@ struct ContentView: View {
             AnimatedBackground()
                 .ignoresSafeArea()
 
-            if appState.isAuthenticated {
+            // Show loading while validating token
+            if appState.isValidatingAuth {
+                VStack(spacing: Theme.Spacing.md) {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: Theme.Colors.accent))
+                        .scaleEffect(1.5)
+                    Text("Loading...")
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                }
+            } else if appState.isAuthenticated {
                 if appState.isOnboarded {
                     MainTabView()
                 } else {

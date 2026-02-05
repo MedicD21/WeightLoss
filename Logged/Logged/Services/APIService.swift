@@ -263,6 +263,28 @@ final class APIService: ObservableObject {
         KeychainService.shared.saveRefreshToken(response.refreshToken)
     }
 
+    func validateToken() async throws -> Bool {
+        struct ValidationResponse: Decodable {
+            let valid: Bool
+            let userId: UUID?
+        }
+
+        do {
+            let response: ValidationResponse = try await request(
+                endpoint: "auth/validate",
+                method: .GET,
+                requiresAuth: true
+            )
+            return response.valid
+        } catch APIError.unauthorized {
+            // Token is invalid/expired
+            return false
+        } catch {
+            // Network error, assume token might be valid (offline mode)
+            return true
+        }
+    }
+
     // MARK: - Chat
 
     func sendChatMessage(message: String, conversationId: String? = nil) async throws -> ChatResponse {

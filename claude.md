@@ -95,6 +95,22 @@ response = ChatResponse(
 **Files Modified**: [backend/app/services/ai_service.py](backend/app/services/ai_service.py)
 **Impact**: Consistent messaging to Claude about water units - use oz, convert to ml.
 
+### Fix 6: Auth Token Validation on App Launch (2026-02-05)
+**Problem**: App showed MainTabView with expired tokens, creating hybrid auth state where users saw progress screens but couldn't actually use the app.
+**Root Cause**: AppState.init() checked if token exists in keychain but didn't validate it. Expired tokens caused `isAuthenticated = true` without actual authentication.
+**Solution**: Added proper token validation flow:
+- iOS: Added `validateToken()` method to APIService
+- iOS: Updated AppState to validate tokens on launch before setting `isAuthenticated`
+- iOS: Added loading state (`isValidatingAuth`) shown while validating
+- Backend: Added `/auth/validate` endpoint to verify token validity
+- signOut() now clears both auth AND onboarding state
+**Files Modified**:
+- [Logged/Logged/Services/APIService.swift](Logged/Logged/Services/APIService.swift)
+- [Logged/Logged/LoggedApp.swift](Logged/Logged/LoggedApp.swift)
+- [Logged/Logged/ContentView.swift](Logged/Logged/ContentView.swift)
+- [backend/app/routes/auth.py](backend/app/routes/auth.py)
+**Impact**: Users never see MainTabView with invalid tokens. App shows loading indicator while validating, then properly routes to AuthView if token is expired. Graceful offline handling assumes cached auth is valid if network fails.
+
 ## Key Files & Locations
 
 ### Backend (FastAPI)
@@ -151,8 +167,11 @@ response = ChatResponse(
 - [x] Ensure consistent oz usage across all water interactions ✅ FIXED
 - [x] Add tool_results field to iOS ChatResponse ✅ FIXED
 - [x] Fix add_water tool description inconsistency ✅ FIXED
+- [x] Fix auth token validation on app launch ✅ FIXED (2026-02-05)
 - [ ] Test all fixes end-to-end with user flow
 - [ ] Verify tool_results are properly used in iOS (if needed for future features)
+- [ ] Test auth validation with expired tokens
+- [ ] Test offline mode with cached auth
 
 ## Development Commands
 ```bash

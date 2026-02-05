@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import get_auth_db
+from app.models.user import UserProfile
 from app.schemas.auth import (
     MagicLinkRequest,
     MagicLinkVerify,
@@ -11,6 +12,7 @@ from app.schemas.auth import (
     RefreshTokenRequest,
 )
 from app.services.auth_service import auth_service
+from app.utils.auth import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -110,3 +112,19 @@ async def logout():
     Server-side logout would require a token blacklist (not implemented in MVP).
     """
     return {"message": "Logged out successfully"}
+
+
+@router.get("/validate")
+async def validate_token(
+    current_user: UserProfile = Depends(get_current_user),
+):
+    """
+    Validate the current auth token.
+
+    Returns user info if token is valid, 401 if invalid/expired.
+    """
+    return {
+        "valid": True,
+        "user_id": str(current_user.id),
+        "email": current_user.email,
+    }
