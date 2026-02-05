@@ -386,6 +386,23 @@ async def _add_workout_plan(
             "estimated_duration_min": plan.estimated_duration_min,
             "description": plan.description,
             "is_active": plan.is_active,
+            "exercises": [
+                {
+                    "id": str(ex.id),
+                    "name": ex.name,
+                    "muscle_group": ex.muscle_group.value if ex.muscle_group else None,
+                    "equipment": ex.equipment,
+                    "notes": ex.notes,
+                    "sets": ex.sets,
+                    "reps_min": ex.reps_min,
+                    "reps_max": ex.reps_max,
+                    "duration_sec": ex.duration_sec,
+                    "rest_sec": ex.rest_sec,
+                    "superset_group": ex.superset_group,
+                    "order_index": ex.order_index,
+                }
+                for ex in plan.exercises
+            ],
         },
         success=True,
     )

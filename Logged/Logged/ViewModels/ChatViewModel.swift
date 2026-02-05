@@ -203,17 +203,48 @@ final class ChatViewModel: ObservableObject {
                             let planResponse = try await apiService.fetchWorkoutPlan(id: planId)
                             upsertWorkoutPlan(from: planResponse, profile: profile, modelContext: modelContext)
                         } catch {
+                            // Fallback: create plan from created_entries data (includes exercises)
                             if let name = Self.stringValue(from: data["name"]) {
+                                let workoutTypeStr = Self.stringValue(from: data["workout_type"]) ?? "other"
+                                let workoutType = WorkoutType(rawValue: workoutTypeStr) ?? .other
+
                                 let plan = WorkoutPlan(
                                     id: planId,
                                     userId: profile.id,
                                     name: name,
                                     planDescription: Self.stringValue(from: data["description"]),
-                                    workoutType: .other,
+                                    workoutType: workoutType,
                                     scheduledDays: Self.intArrayValue(from: data["scheduled_days"]),
                                     estimatedDurationMin: Self.intValue(from: data["estimated_duration_min"])
                                 )
                                 plan.isActive = Self.boolValue(from: data["is_active"]) ?? true
+
+                                // Add exercises if included in data
+                                if let exercisesData = data["exercises"] as? [[String: Any]] {
+                                    for exerciseData in exercisesData {
+                                        if let exerciseName = Self.stringValue(from: exerciseData["name"]) {
+                                            let muscleGroupStr = Self.stringValue(from: exerciseData["muscle_group"])
+                                            let muscleGroup = muscleGroupStr.flatMap { MuscleGroup(rawValue: $0) }
+
+                                            let exercise = WorkoutExercise(
+                                                id: Self.uuidValue(from: exerciseData["id"]),
+                                                name: exerciseName,
+                                                muscleGroup: muscleGroup,
+                                                equipment: Self.stringValue(from: exerciseData["equipment"]),
+                                                sets: Self.intValue(from: exerciseData["sets"]) ?? 3,
+                                                repsMin: Self.intValue(from: exerciseData["reps_min"]),
+                                                repsMax: Self.intValue(from: exerciseData["reps_max"]),
+                                                durationSec: Self.intValue(from: exerciseData["duration_sec"]),
+                                                restSec: Self.intValue(from: exerciseData["rest_sec"]) ?? 60,
+                                                orderIndex: Self.intValue(from: exerciseData["order_index"]) ?? 0
+                                            )
+                                            exercise.notes = Self.stringValue(from: exerciseData["notes"])
+                                            exercise.supersetGroup = Self.intValue(from: exerciseData["superset_group"])
+                                            plan.exercises.append(exercise)
+                                        }
+                                    }
+                                }
+
                                 modelContext.insert(plan)
                             }
                         }

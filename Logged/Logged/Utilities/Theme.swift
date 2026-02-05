@@ -133,7 +133,11 @@ struct CardStyle: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .background(elevated ? Theme.Colors.surfaceElevated : Theme.Colors.surface)
+            .background(
+                (elevated ? Theme.Colors.surfaceElevated : Theme.Colors.surface)
+                    .opacity(0.6)
+            )
+            .background(.ultraThinMaterial.opacity(0.3))
             .cornerRadius(Theme.Radius.medium)
     }
 }
@@ -161,7 +165,8 @@ struct SecondaryButtonStyle: ButtonStyle {
             .foregroundColor(Theme.Colors.accent)
             .frame(maxWidth: .infinity)
             .padding(.vertical, Theme.Spacing.md)
-            .background(Theme.Colors.surface)
+            .background(Theme.Colors.surface.opacity(0.6))
+            .background(.ultraThinMaterial.opacity(0.3))
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.Radius.medium)
                     .stroke(Theme.Colors.accent, lineWidth: 1)

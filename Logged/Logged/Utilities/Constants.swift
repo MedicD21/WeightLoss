@@ -6,9 +6,15 @@ enum Constants {
 
     enum API {
         #if DEBUG
-        static let baseURL = "http://192.168.6.72:8000"
+        #if targetEnvironment(simulator)
+        // Simulator - use localhost since backend is on same Mac
+        static let baseURL = "http://localhost:8000"
         #else
-        static let baseURL = "https://api.logged.app"
+        // Physical device - use Tailscale
+        static let baseURL = "http://schaaf-home-pc.tail5e22a1.ts.net:8000"
+        #endif
+        #else
+        static let baseURL = "http://schaaf-home-pc.tail5e22a1.ts.net:8000"
         #endif
 
         static let timeout: TimeInterval = 30

@@ -92,7 +92,7 @@ struct ChatView: View {
                 )
                 .focused($isInputFocused)
             }
-            .background(Theme.Colors.background)
+            .background(Color.clear)
             .navigationTitle("Terry")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
