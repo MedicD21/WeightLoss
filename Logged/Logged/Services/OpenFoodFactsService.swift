@@ -46,24 +46,46 @@ final class OpenFoodFactsService {
             URLQueryItem(name: "search_terms", value: query),
             URLQueryItem(name: "page", value: String(page)),
             URLQueryItem(name: "page_size", value: String(pageSize)),
-            URLQueryItem(name: "json", value: "1"),
+            URLQueryItem(name: "action", value: "process"),
+            URLQueryItem(name: "json", value: "true"),
             URLQueryItem(name: "fields", value: "code,product_name,brands,nutriments,serving_size,serving_quantity,nutriscore_grade,image_url"),
         ]
 
         var request = URLRequest(url: components.url!)
         request.setValue(Constants.OpenFoodFacts.userAgent, forHTTPHeaderField: "User-Agent")
 
+        print("[OFF DEBUG] Search URL: \(components.url?.absoluteString ?? "nil")")
+
         let (data, response) = try await session.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            print("[OFF DEBUG] Invalid response type")
+            return []
+        }
+
+        print("[OFF DEBUG] HTTP Status: \(httpResponse.statusCode)")
+
+        guard httpResponse.statusCode == 200 else {
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("[OFF DEBUG] Error response: \(responseString.prefix(500))")
+            }
             return []
         }
 
         let decoder = JSONDecoder()
-        let result = try decoder.decode(OFFSearchResponse.self, from: data)
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
 
-        return result.products
+        do {
+            let result = try decoder.decode(OFFSearchResponse.self, from: data)
+            print("[OFF DEBUG] Found \(result.products.count) products")
+            return result.products
+        } catch {
+            print("[OFF DEBUG] Decode error: \(error)")
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("[OFF DEBUG] Response: \(responseString.prefix(500))")
+            }
+            return []
+        }
     }
 }
 

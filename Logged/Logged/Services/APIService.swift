@@ -117,7 +117,34 @@ final class APIService: ObservableObject {
             throw APIError.httpError(statusCode: httpResponse.statusCode, data: data)
         }
 
-        return try makeDecoder().decode(T.self, from: data)
+        // Debug: log raw JSON for chat responses
+        if endpoint.contains("ai/chat") {
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("[iOS DEBUG] Raw JSON response: \(jsonString)")
+            }
+        }
+
+        do {
+            let decoded = try makeDecoder().decode(T.self, from: data)
+            return decoded
+        } catch {
+            print("[iOS ERROR] Decoding failed: \(error)")
+            if let decodingError = error as? DecodingError {
+                switch decodingError {
+                case .keyNotFound(let key, let context):
+                    print("[iOS ERROR] Key '\(key.stringValue)' not found: \(context.debugDescription)")
+                case .typeMismatch(let type, let context):
+                    print("[iOS ERROR] Type mismatch for type \(type): \(context.debugDescription)")
+                case .valueNotFound(let type, let context):
+                    print("[iOS ERROR] Value not found for type \(type): \(context.debugDescription)")
+                case .dataCorrupted(let context):
+                    print("[iOS ERROR] Data corrupted: \(context.debugDescription)")
+                @unknown default:
+                    print("[iOS ERROR] Unknown decoding error")
+                }
+            }
+            throw error
+        }
     }
 
     func requestVoid(

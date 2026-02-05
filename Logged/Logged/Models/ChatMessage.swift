@@ -74,6 +74,40 @@ struct ToolCall: Codable, Identifiable {
     let id: String
     let name: String
     let arguments: [String: AnyCodable]
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        print("[TOOLCALL DECODE] Decoding ToolCall...")
+
+        do {
+            id = try container.decode(String.self, forKey: .id)
+            print("[TOOLCALL DECODE] ✓ id: \(id)")
+        } catch {
+            print("[TOOLCALL DECODE] ✗ id failed: \(error)")
+            throw error
+        }
+
+        do {
+            name = try container.decode(String.self, forKey: .name)
+            print("[TOOLCALL DECODE] ✓ name: \(name)")
+        } catch {
+            print("[TOOLCALL DECODE] ✗ name failed: \(error)")
+            throw error
+        }
+
+        do {
+            arguments = try container.decode([String: AnyCodable].self, forKey: .arguments)
+            print("[TOOLCALL DECODE] ✓ arguments decoded: \(arguments.keys.count) keys")
+        } catch {
+            print("[TOOLCALL DECODE] ✗ arguments failed: \(error)")
+            throw error
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, arguments
+    }
 }
 
 /// Type-erased Codable wrapper
@@ -155,6 +189,96 @@ struct ChatResponse: Decodable {
         case toolCalls = "tool_calls"
         case toolResults = "tool_results"
         case createdEntries = "created_entries"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        print("[DECODE] Starting ChatResponse decode")
+
+        message = try container.decode(String.self, forKey: .message)
+        print("[DECODE] ✓ message decoded")
+
+        role = try container.decode(MessageRole.self, forKey: .role)
+        print("[DECODE] ✓ role decoded")
+
+        conversationId = try container.decode(String.self, forKey: .conversationId)
+        print("[DECODE] ✓ conversationId decoded")
+
+        modelUsed = try container.decode(String.self, forKey: .modelUsed)
+        print("[DECODE] ✓ modelUsed decoded")
+
+        tokensUsed = try? container.decode(Int.self, forKey: .tokensUsed)
+        print("[DECODE] ✓ tokensUsed decoded: \(tokensUsed as Any)")
+
+        // Try to decode toolCalls
+        do {
+            if container.contains(.toolCalls) {
+                print("[DECODE] toolCalls key exists, attempting decode...")
+                toolCalls = try container.decode([ToolCall].self, forKey: .toolCalls)
+                print("[DECODE] ✓ toolCalls decoded: \(toolCalls?.count ?? 0) items")
+            } else {
+                print("[DECODE] toolCalls key NOT found in JSON")
+                toolCalls = nil
+            }
+        } catch {
+            print("[DECODE] ✗ toolCalls decode FAILED: \(error)")
+            if let decodingError = error as? DecodingError {
+                switch decodingError {
+                case .typeMismatch(let type, let context):
+                    print("[DECODE] Type mismatch: expected \(type), path: \(context.codingPath)")
+                case .keyNotFound(let key, let context):
+                    print("[DECODE] Key not found: \(key), path: \(context.codingPath)")
+                case .valueNotFound(let type, let context):
+                    print("[DECODE] Value not found for \(type), path: \(context.codingPath)")
+                case .dataCorrupted(let context):
+                    print("[DECODE] Data corrupted: \(context.debugDescription)")
+                @unknown default:
+                    break
+                }
+            }
+            toolCalls = nil
+        }
+
+        // Try to decode toolResults
+        do {
+            toolResults = try container.decodeIfPresent([ToolResult].self, forKey: .toolResults)
+            print("[DECODE] ✓ toolResults decoded: \(toolResults?.count ?? 0) items")
+        } catch {
+            print("[DECODE] ✗ toolResults decode FAILED: \(error)")
+            toolResults = nil
+        }
+
+        // Try to decode createdEntries
+        do {
+            if container.contains(.createdEntries) {
+                print("[DECODE] createdEntries key exists, attempting decode...")
+                createdEntries = try container.decode([[String: AnyCodable]].self, forKey: .createdEntries)
+                print("[DECODE] ✓ createdEntries decoded: \(createdEntries?.count ?? 0) items")
+            } else {
+                print("[DECODE] createdEntries key NOT found in JSON")
+                createdEntries = nil
+            }
+        } catch {
+            print("[DECODE] ✗ createdEntries decode FAILED: \(error)")
+            if let decodingError = error as? DecodingError {
+                switch decodingError {
+                case .typeMismatch(let type, let context):
+                    print("[DECODE] Type mismatch: expected \(type), path: \(context.codingPath)")
+                case .keyNotFound(let key, let context):
+                    print("[DECODE] Key not found: \(key), path: \(context.codingPath)")
+                case .valueNotFound(let type, let context):
+                    print("[DECODE] Value not found for \(type), path: \(context.codingPath)")
+                case .dataCorrupted(let context):
+                    print("[DECODE] Data corrupted: \(context.debugDescription)")
+                @unknown default:
+                    break
+                }
+            }
+            createdEntries = nil
+        }
+
+        print("[DECODE] ChatResponse decode complete")
     }
 }
 

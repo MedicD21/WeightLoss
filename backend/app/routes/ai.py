@@ -150,8 +150,16 @@ async def chat_with_assistant(
 
     await db.flush()
 
+    # Debug logging
+    if created_entries:
+        print(f"[DEBUG] Created entries: {len(created_entries)} items")
+        for entry in created_entries:
+            print(f"[DEBUG] Entry type: {entry['type']}")
+            if 'data' in entry:
+                print(f"[DEBUG] Entry data keys: {entry['data'].keys()}")
+
     # Create new response with tool results and created entries
-    return ChatResponse(
+    final_response = ChatResponse(
         message=response.message,
         role=response.role,
         tool_calls=response.tool_calls,
@@ -161,6 +169,14 @@ async def chat_with_assistant(
         tokens_used=response.tokens_used,
         created_entries=created_entries if created_entries else None,
     )
+
+    # Debug: log the response structure
+    print(f"[DEBUG] Final response dict: {final_response.model_dump()}")
+    print(f"[DEBUG] Response has created_entries: {final_response.created_entries is not None}")
+    if final_response.created_entries:
+        print(f"[DEBUG] created_entries length: {len(final_response.created_entries)}")
+
+    return final_response
 
 
 async def _execute_tool(

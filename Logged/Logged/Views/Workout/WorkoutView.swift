@@ -96,7 +96,7 @@ struct WorkoutLogSection: View {
         .onAppear {
             logsToDisplay = logs
         }
-        .onChange(of: logs) { newLogs in
+        .onChange(of: logs) { _, newLogs in
             logsToDisplay = newLogs
         }
     }

@@ -47,6 +47,13 @@ final class ChatViewModel: ObservableObject {
                 conversationId: conversationId
             )
 
+            print("[iOS DEBUG] Received response from API")
+            print("[iOS DEBUG] Response has toolCalls: \(response.toolCalls != nil)")
+            print("[iOS DEBUG] Response has createdEntries: \(response.createdEntries != nil)")
+            if let createdEntries = response.createdEntries {
+                print("[iOS DEBUG] createdEntries count: \(createdEntries.count)")
+            }
+
             // Update conversation ID
             conversationId = response.conversationId
 
@@ -117,11 +124,16 @@ final class ChatViewModel: ObservableObject {
         profile: UserProfile,
         modelContext: ModelContext
     ) async {
+        print("[iOS DEBUG] Processing \(entries.count) created entries")
         for entry in entries {
+            print("[iOS DEBUG] Entry keys: \(entry.keys)")
             guard let type = entry["type"]?.value as? String,
                   let data = entry["data"]?.value as? [String: Any] else {
+                print("[iOS DEBUG] Failed to extract type or data from entry")
                 continue
             }
+            print("[iOS DEBUG] Entry type: \(type)")
+            print("[iOS DEBUG] Data keys: \(data.keys)")
 
             switch type {
             case "add_meal":
@@ -197,12 +209,17 @@ final class ChatViewModel: ObservableObject {
                 }
 
             case "add_workout_plan":
+                print("[iOS DEBUG] Processing add_workout_plan")
                 if let planId = Self.uuidValue(from: data["plan_id"]) {
+                    print("[iOS DEBUG] Plan ID: \(planId)")
                     if fetchWorkoutPlan(id: planId, modelContext: modelContext) == nil {
+                        print("[iOS DEBUG] Plan doesn't exist locally, fetching from API")
                         do {
                             let planResponse = try await apiService.fetchWorkoutPlan(id: planId)
+                            print("[iOS DEBUG] Successfully fetched plan from API")
                             upsertWorkoutPlan(from: planResponse, profile: profile, modelContext: modelContext)
                         } catch {
+                            print("[iOS DEBUG] API fetch failed: \(error), using fallback")
                             // Fallback: create plan from created_entries data (includes exercises)
                             if let name = Self.stringValue(from: data["name"]) {
                                 let workoutTypeStr = Self.stringValue(from: data["workout_type"]) ?? "other"
@@ -227,7 +244,7 @@ final class ChatViewModel: ObservableObject {
                                             let muscleGroup = muscleGroupStr.flatMap { MuscleGroup(rawValue: $0) }
 
                                             let exercise = WorkoutExercise(
-                                                id: Self.uuidValue(from: exerciseData["id"]),
+                                                id: Self.uuidValue(from: exerciseData["id"]) ?? UUID(),
                                                 name: exerciseName,
                                                 muscleGroup: muscleGroup,
                                                 equipment: Self.stringValue(from: exerciseData["equipment"]),
@@ -245,10 +262,18 @@ final class ChatViewModel: ObservableObject {
                                     }
                                 }
 
+                                print("[iOS DEBUG] Inserting plan with \(plan.exercises.count) exercises")
                                 modelContext.insert(plan)
+                                print("[iOS DEBUG] Plan inserted successfully")
+                            } else {
+                                print("[iOS DEBUG] No plan name in data")
                             }
                         }
+                    } else {
+                        print("[iOS DEBUG] Plan already exists locally")
                     }
+                } else {
+                    print("[iOS DEBUG] Failed to extract plan_id from data")
                 }
 
             case "set_goal":
